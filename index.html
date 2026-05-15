@@ -1336,8 +1336,25 @@ function updateStageRun(lvl) {
 
   GAME.camX = Math.max(0, Math.min(lvl.width - W, p.x - W/2 + 32));
 
-  // มอมแมม hurtTimer
+  // มอมแมม hurtTimer + วิ่งหากุ๊งกิ๊ง
   if (mm.hurtTimer > 0) mm.hurtTimer--;
+
+  // มอมแมมวิ่งหากุ๊งกิ๊ง
+  const mmDx = p.x - mm.x;
+  const mmDy = p.y - mm.y;
+  const mmDist = Math.sqrt(mmDx*mmDx + mmDy*mmDy) || 1;
+  const mmSpd = 2.2;
+  if (mmDist > 80) {
+    mm.x += (mmDx / mmDist) * mmSpd;
+    mm.y += (mmDy / mmDist) * mmSpd;
+  }
+  mm.x = Math.max(20, Math.min(lvl.width - 60, mm.x));
+  mm.y = Math.max(20, Math.min((lvl.height||540) - 60, mm.y));
+  // นับ frame animation และ speech
+  mm.frame = (mm.frame || 0) + 1;
+  if (!mm.cryTimer) mm.cryTimer = 0;
+  if (mm.hurtTimer > 30) mm.cryTimer = 90; // ร้องขอความช่วยเหลือ 90 เฟรมหลังโดนตี
+  if (mm.cryTimer > 0) mm.cryTimer--;
 
   // cats AI: ไล่มอมแมม!
   for (const c of lvl.cats) {
@@ -1472,6 +1489,46 @@ function drawStage2(lvl) {
     ctx.fillRect(bx, by, barW, barH);
     ctx.fillStyle = mm.hp > 50 ? '#44DD44' : mm.hp > 25 ? '#FFD700' : '#FF4D00';
     ctx.fillRect(bx, by, barW * (mm.hp / mm.maxHp), barH);
+
+    // Speech bubble "ช่วยด้วยๆ" เมื่อโดนตี
+    if (mm.cryTimer > 0) {
+      const alpha = Math.min(1, mm.cryTimer / 20);
+      const bobY = mmSY - 60 - Math.sin(Date.now() / 150) * 5;
+      const msgs = ['ช่วยด้วย! 😿', 'กุ๊งกิ๊ง!! 😿', 'โอ้ยๆๆ! 😿'];
+      const msg = msgs[Math.floor(mm.cryTimer / 30) % msgs.length];
+      const bw = ctx.measureText(msg).width + 24;
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      // กล่อง bubble
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.roundRect(mmSX + 28 - bw/2, bobY - 30, bw, 34, 8);
+      ctx.fill();
+      ctx.strokeStyle = '#FF4D6D';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      // หางฟองคำพูด
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.moveTo(mmSX + 24, bobY + 4);
+      ctx.lineTo(mmSX + 32, bobY + 16);
+      ctx.lineTo(mmSX + 40, bobY + 4);
+      ctx.fill();
+      ctx.strokeStyle = '#FF4D6D';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(mmSX + 24, bobY + 4);
+      ctx.lineTo(mmSX + 32, bobY + 16);
+      ctx.lineTo(mmSX + 40, bobY + 4);
+      ctx.stroke();
+      // ข้อความ
+      ctx.fillStyle = '#CC0033';
+      ctx.font = 'bold 17px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(msg, mmSX + 28, bobY - 8);
+      ctx.restore();
+    }
   } else {
     drawMomMaemKO(mmSX, mmSY, 4);
   }
