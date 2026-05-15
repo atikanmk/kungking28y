@@ -436,34 +436,32 @@ function drawKungKing(x, y, state, dir, scale = 2) {
   if (state === 'kick') grid = KK_KICK;
   const pal = Object.assign({}, KK_PALETTE, {'0': '#1a1a1a', 'O': '#D85370'});
 
-  // --- kick VFX: motion lines + glow BEFORE drawing sprite ---
+  // --- kick VFX: glow + speed lines at shoe tip only ---
   if (state === 'kick') {
-    const cx = x + 9 * scale;
-    const cy = y + 12 * scale;
     const kickX = dir === 1 ? x + 18 * scale : x;
-    const kickY = y + 23 * scale;
+    const kickY = y + 18 * scale;
 
-    // glow around shoe
+    // glow circle at shoe
     ctx.save();
-    ctx.globalAlpha = 0.35;
+    ctx.globalAlpha = 0.4;
     ctx.fillStyle = '#FFD700';
     ctx.beginPath();
-    ctx.arc(kickX, kickY, scale * 5, 0, Math.PI * 2);
+    ctx.arc(kickX, kickY, scale * 4, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
 
-    // motion lines (3 streaks from body toward kick direction)
+    // 3 short speed lines beside the shoe (horizontal streaks)
     ctx.save();
     ctx.strokeStyle = '#FF8C00';
-    ctx.lineWidth = scale * 0.8;
-    ctx.globalAlpha = 0.6;
-    for (let i = 0; i < 4; i++) {
-      const ly = kickY - scale * (4 - i) * 2;
-      const lx0 = dir === 1 ? cx + scale * i * 2 : cx - scale * i * 2;
-      const lx1 = dir === 1 ? kickX - scale * 3 : kickX + scale * 3;
+    ctx.lineWidth = scale * 1.5;
+    ctx.globalAlpha = 0.55;
+    ctx.lineCap = 'round';
+    for (let i = 0; i < 3; i++) {
+      const lx = dir === 1 ? kickX + scale * (2 + i * 3) : kickX - scale * (2 + i * 3);
+      const ly = kickY - scale * 3 + i * scale * 3;
       ctx.beginPath();
-      ctx.moveTo(lx0, ly + scale * i);
-      ctx.lineTo(lx1, kickY - scale * (3 - i));
+      ctx.moveTo(lx, ly);
+      ctx.lineTo(lx + (dir === 1 ? scale * 5 : -scale * 5), ly);
       ctx.stroke();
     }
     ctx.restore();
