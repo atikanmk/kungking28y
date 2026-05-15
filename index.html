@@ -404,8 +404,7 @@ const KK_JUMP = [
   '....bb....bb....',
 ];
 
-// Kick pose: body leaned forward, HIGH kick — leg sweeps up diagonally
-// Grid is 18 cols × 24 rows for more room to show the full kick arc
+// Kick pose: body leaned forward, HIGH kick
 const KK_KICK = [
   '..................',  // 0  air
   '.....hhhhhhhh...',   // 1  hair top
@@ -414,24 +413,18 @@ const KK_KICK = [
   '..PppppppppppppP',   // 4  headband shadow
   '..hhhhhhhhhhhhhh',   // 5  bangs
   '..hssssssssssssh',   // 6  face
-  '..hssHHssssHHssh',   // 7  eyebrows fierce (angled)
-  '..hssHHssssHHssh',   // 8  squint — same brow line
-  '..hssHessssHessh',   // 9  pupils under brow
-  '..hssssssssssssh',   // 10 lower face
-  '..hsBsssOOOsssBh',   // 11 blush + open mouth (yelling)
-  '...hssssOssssssh',   // 12 chin (body tilting forward)
-  '....hssssssssssh',   // 13 neck lean
-  'wwwwwwwwwwwwwwww..',  // 14 shirt — arms wide: left back, right forward
-  '.wwwwwwwwwwwwwwww.',  // 15 shirt bulk
-  '..WWwwwwwwwwwwWW..',  // 16 shirt shadow sides (body twist)
-  '....dddddddddd....',  // 17 hip / denim waist (centered, body crouched)
-  '....ddddddd.......',  // 18 standing leg thigh (left, barely visible)
-  '....ddd...........',  // 19 standing leg knee
-  '....bbb...........',  // 20 standing shoe on ground
-  // kick leg sweeps UP and forward — thigh diagonal, shin horizontal
-  '..............dddd',  // 21 kick thigh rising (far right)
-  '.............dddss',  // 22 kick knee + shin skin
-  '............bbbbbb',  // 23 BIG kick shoe extended fully right!
+  '..hssHHssssHHssh',   // 7  eyebrows fierce
+  '..hssHessssHessh',   // 8  pupils under brow
+  '..hssssssssssssh',   // 9  lower face
+  '..hsBsssOOOsssBh',   // 10 blush + open mouth
+  '...hsssssssssssh',   // 11 chin
+  'wwwwwwwwwwwwwwww..',  // 12 arms wide
+  '.wwwwwwwwwwwwwwww.',  // 13 shirt
+  '..WWwwwwwwwwwwWW..',  // 14 shirt shadow
+  '....dddddddddd....',  // 15 hip
+  '....ddd...........',  // 16 standing leg
+  '....bbb..ddddssss',   // 17 stand shoe + kick thigh+shin
+  '..............bbbb',  // 18 kick shoe (short, compact)
 ];
 
 function drawKungKing(x, y, state, dir, scale = 2) {
