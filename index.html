@@ -99,10 +99,8 @@
       <h2>เลือกด่าน</h2>
       <p style="font-size:13px;">เรื่องราว 1 ปีของกุ๊งกิ๊ง</p>
       <div class="levelBtns">
-        <button onclick="loadStage(1)">1. โรงพยาบาล</button>
-        <button onclick="loadStage(2)">2. รับของขวัญ</button>
-        <button onclick="loadStage(3)">3. ภาพแห่งความทรงจำ</button>
-        <button onclick="loadStage(4)">4. วันเกิด</button>
+        <button onclick="loadStage(1)" aria-label="ด่าน 1 ไล่เตะแมว">1. ไล่เตะแมว</button>
+        <button onclick="loadStage(2)" aria-label="ด่าน 2 โรงพยาบาล">2. โรงพยาบาล</button>
       </div>
       <button onclick="hide('levelScreen'); show('titleScreen')">กลับ</button>
     </div>
@@ -720,12 +718,13 @@ const GAME = {
   totalScore: 0,
   state: 'title',   // title | playing | win | lose | ending
 };
+const FINAL_STAGE_NUMBER = 2;
 
 /* ----------------- STAGE 1: Hospital Platformer ----------------- */
-function buildStage1() {
+function buildHospitalStage() {
   const ground = 440;
   return {
-    name: 'ด่าน 1: โรงพยาบาล',
+    name: 'ด่าน 2: โรงพยาบาล',
     intro: 'กุ๊งกิ๊งทำงานเป็นพยาบาลที่โรงพยาบาล\nกด Z หรือ X เพื่อเตะเชื้อโรค!\nกำจัดเชื้อโรคให้หมด แล้วไปที่ GOAL!',
     type: 'platform',
     winCondition: 'viruses',
@@ -780,7 +779,7 @@ function buildStage1() {
 }
 
 /* ----------------- STAGE 2: Catch the Gifts ----------------- */
-function buildStage2() {
+function buildCatChaseStage() {
   const cats = [];
   for (let i = 0; i < 10; i++) {
     cats.push({
@@ -794,7 +793,7 @@ function buildStage2() {
     });
   }
   return {
-    name: 'ด่าน 2: ไล่เตะแมว',
+    name: 'ด่าน 1: ไล่เตะแมว',
     intro: 'มีแมว 10 ตัววิ่งหนีกุ๊งกิ๊ง!\nใช้ ← → ↑ ↓ วิ่งทุกทิศทาง\nกด Z หรือ X เพื่อเตะให้ครบทุกตัว',
     type: 'run',
     width: 3800,
@@ -1588,7 +1587,7 @@ function loop() {
       drawStage3(lvl);
     }
     // hud
-    let hudHtml = `Stage ${GAME.stage}/4  ❤×${GAME.lives}  คะแนน: ${GAME.score}`;
+    let hudHtml = `Stage ${GAME.stage}/2  ❤×${GAME.lives}  คะแนน: ${GAME.score}`;
     if (lvl.type === 'run') {
       const aliveCats = lvl.cats ? lvl.cats.filter(c=>c.alive).length : 0;
       hudHtml += `  🐱 แมว: ${aliveCats} ตัว`;
@@ -1603,11 +1602,11 @@ function loop() {
     }
     hud.innerHTML = hudHtml;
     // hint bottom
-    if (GAME.stage === 2 && lvl.type === 'run') {
+    if (GAME.stage === 1 && lvl.type === 'run') {
       const alive = lvl.cats ? lvl.cats.filter(c=>c.alive).length : 0;
       hint.textContent = `ไล่เตะแมวด้วย Z/X หรือกระโดดทับ! เหลือ ${alive}/10 ตัว`;
     }
-    if (GAME.stage === 1 && lvl.type === 'platform') {
+    if (GAME.stage === 2 && lvl.type === 'platform') {
       const allDead = lvl.viruses && lvl.viruses.every(v => !v.alive);
       const healedCount = lvl.patients ? lvl.patients.filter(p => p.healed).length : 0;
       hint.textContent = allDead
@@ -1638,10 +1637,16 @@ function loadStage(n) {
   GAME.stage = n;
   GAME.score = 0;
   let lvl;
-  if (n === 1) lvl = buildStage1();
-  else if (n === 2) lvl = buildStage2();
-  else if (n === 3) lvl = buildStage3();
-  else if (n === 4) lvl = buildStage4();
+  if (n === 1) lvl = buildCatChaseStage();
+  else if (n === 2) lvl = buildHospitalStage();
+  else {
+    console.warn(`Unknown stage: ${n}`);
+    GAME.level = null;
+    GAME.state = 'title';
+    show('titleScreen');
+    return;
+  }
+  lvl.isFinal = (n === FINAL_STAGE_NUMBER);
   GAME.level = lvl;
   if (lvl.type === 'platform') GAME.player = newPlayer(40, lvl.groundY - 64);
   else if (lvl.type === 'run') GAME.player = newPlayer(40, 240);
