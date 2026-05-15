@@ -802,58 +802,28 @@ const FINAL_STAGE_NUMBER = 2;
 
 /* ----------------- STAGE 1: Hospital Platformer ----------------- */
 function buildHospitalStage() {
-  const ground = 440;
+  // viruses กระจายทั่วโรงพยาบาล (top-down)
+  const viruses = [
+    {x: 700,  y: 120, vx: 1.2, vy: 0.8, alive: true},
+    {x: 1200, y: 300, vx:-1.0, vy: 1.0, alive: true},
+    {x: 1800, y: 180, vx: 0.8, vy:-1.2, alive: true},
+    {x: 2400, y: 380, vx:-1.5, vy: 0.5, alive: true},
+  ];
   return {
     name: 'ด่าน 2: โรงพยาบาล',
-    intro: 'กุ๊งกิ๊งทำงานเป็นพยาบาลที่โรงพยาบาล\nกด Z หรือ X เพื่อเตะเชื้อโรค!\nกำจัดเชื้อโรคให้หมด แล้วไปที่ GOAL!',
-    type: 'platform',
+    intro: 'กุ๊งกิ๊งต้องกำจัดเชื้อโรคในโรงพยาบาล!\nวิ่งด้วย ← → ↑ ↓ กด Z หรือ X เพื่อเตะ\nกำจัดเชื้อโรคให้หมดทุกตัว!',
+    type: 'topdown',
     winCondition: 'viruses',
-    groundY: ground,
-    width: 3200,
-    platforms: [
-      {x: 400, y: 360, w: 120},
-      {x: 640, y: 300, w: 120},
-      {x: 920, y: 240, w: 160},
-      {x: 1240, y: 320, w: 120},
-      {x: 1520, y: 260, w: 140},
-      {x: 1800, y: 340, w: 160},
-      {x: 2120, y: 280, w: 120},
-      {x: 2400, y: 340, w: 120},
-      {x: 2680, y: 280, w: 160},
-    ],
-    pills: [
-      {x: 440, y: 312, taken: false},
-      {x: 680, y: 252, taken: false},
-      {x: 980, y: 192, taken: false},
-      {x: 1280, y: 272, taken: false},
-      {x: 1560, y: 212, taken: false},
-      {x: 1840, y: 292, taken: false},
-      {x: 2160, y: 232, taken: false},
-      {x: 2440, y: 292, taken: false},
-      {x: 2720, y: 232, taken: false},
-      {x: 200,  y: 396, taken: false},
-      {x: 1100, y: 396, taken: false},
-      {x: 2000, y: 396, taken: false},
-    ],
-    hearts: [
-      {x: 1400, y: 390, taken: false},
-      {x: 2300, y: 390, taken: false},
-    ],
-    viruses: [
-      {x: 800,  baseX: 800,  range: 160, y: 408, dir:  1, alive: true},
-      {x: 1400, baseX: 1400, range: 120, y: 408, dir:  1, alive: true},
-      {x: 2100, baseX: 2100, range: 180, y: 408, dir: -1, alive: true},
-      {x: 2600, baseX: 2600, range: 140, y: 408, dir:  1, alive: true},
-    ],
+    width: 3000,
+    height: 540,
+    viruses: viruses,
     patients: [
-      {x: 660,  y: 390, virusIdx: 0, healed: false},
-      {x: 1280, y: 390, virusIdx: 1, healed: false},
-      {x: 1940, y: 390, virusIdx: 2, healed: false},
-      {x: 2460, y: 390, virusIdx: 3, healed: false},
+      {x: 500,  y: 100, virusIdx: 0, healed: false},
+      {x: 1100, y: 280, virusIdx: 1, healed: false},
+      {x: 1700, y: 160, virusIdx: 2, healed: false},
+      {x: 2300, y: 360, virusIdx: 3, healed: false},
     ],
-    goal: {x: 3000, y: 408},
     bg: 'hospital',
-    target: 8,
     secretMsg: 'กุ๊งกิ๊งเป็นนางฟ้าชุดขาวที่ทำให้คนไข้หายดี ❤',
   };
 }
@@ -1331,6 +1301,161 @@ function updateStage2(lvl) {
   updateStageRun(lvl);
 }
 
+/* ----------------- HOSPITAL TOP-DOWN ----------------- */
+function updateHospitalTopdown(lvl) {
+  if (!GAME.player) GAME.player = newPlayer(40, 240);
+  const p = GAME.player;
+  const SPD = 5;
+
+  // 4-directional movement
+  let moveX = 0, moveY = 0;
+  if (held('arrowleft','a')) moveX = -1;
+  if (held('arrowright','d')) moveX = 1;
+  if (held('arrowup','w')) moveY = -1;
+  if (held('arrowdown','s')) moveY = 1;
+  if (moveX !== 0 && moveY !== 0) { moveX *= 0.707; moveY *= 0.707; }
+  p.vx = moveX * SPD;
+  p.vy = moveY * SPD;
+  if (moveX !== 0) p.dir = moveX;
+
+  if (held('z','x') && p.kickTimer === 0) p.kickTimer = 22;
+  if (p.kickTimer > 0) p.kickTimer--;
+
+  p.x += p.vx; p.y += p.vy;
+  if (p.x < 0) p.x = 0;
+  if (p.x + p.w > lvl.width) p.x = lvl.width - p.w;
+  if (p.y < 0) p.y = 0;
+  if (p.y + p.h > (lvl.height||540)) p.y = (lvl.height||540) - p.h;
+
+  p.onGround = true;
+  p.state = p.kickTimer > 0 ? 'kick' : (Math.abs(p.vx)+Math.abs(p.vy) > 0.1) ? 'walk' : 'idle';
+  if (p.invuln > 0) p.invuln--;
+
+  GAME.camX = Math.max(0, Math.min(lvl.width - W, p.x - W/2 + 32));
+
+  // viruses เดินวนไปมา
+  for (const v of lvl.viruses) {
+    if (!v.alive) continue;
+    v.x += v.vx; v.y += v.vy;
+    if (v.x < 20)              { v.x = 20;              v.vx = Math.abs(v.vx); }
+    if (v.x > lvl.width - 20) { v.x = lvl.width - 20;  v.vx = -Math.abs(v.vx); }
+    if (v.y < 20)              { v.y = 20;              v.vy = Math.abs(v.vy); }
+    if (v.y > (lvl.height||540)-20) { v.y = (lvl.height||540)-20; v.vy = -Math.abs(v.vy); }
+
+    // ชนผู้เล่น → เสียชีวิต
+    if (p.invuln === 0 && collide({x:p.x+4,y:p.y+8,w:p.w-8,h:p.h-8},{x:v.x,y:v.y,w:28,h:28})) {
+      GAME.lives--; p.invuln = 80;
+      if (GAME.lives <= 0) { loseStage(); return; }
+    }
+
+    // kick
+    if (p.kickTimer > 10) {
+      const kx = p.dir === 1 ? p.x + p.w : p.x - 52;
+      if (collide({x:kx,y:p.y+20,w:52,h:36},{x:v.x,y:v.y,w:28,h:28})) {
+        v.alive = false; GAME.score += 20;
+        p.kickEffect = {worldX: v.x+14, y: v.y+8, frame: 0};
+      }
+    }
+  }
+
+  // tick kick effect
+  if (p.kickEffect) { p.kickEffect.frame++; if (p.kickEffect.frame > 20) p.kickEffect = null; }
+
+  // heal patients
+  for (const pat of lvl.patients) {
+    if (!pat.healed && !lvl.viruses[pat.virusIdx].alive) {
+      pat.healed = true; GAME.score += 30;
+    }
+  }
+
+  // win
+  if (lvl.viruses.every(v => !v.alive)) winStage();
+}
+
+function drawHospitalTopdown(lvl) {
+  const H2 = lvl.height || 540;
+  const cx = GAME.camX || 0;
+  const p = GAME.player;
+
+  // พื้นโรงพยาบาล (กระเบื้องสีขาว-เทา)
+  ctx.fillStyle = '#F0F0F8';
+  ctx.fillRect(0, 0, W, H2);
+  ctx.strokeStyle = '#D0D0E0';
+  ctx.lineWidth = 1;
+  const tile = 80;
+  for (let gx = -(cx % tile); gx < W; gx += tile) {
+    ctx.beginPath(); ctx.moveTo(gx,0); ctx.lineTo(gx,H2); ctx.stroke();
+  }
+  for (let gy = 0; gy < H2; gy += tile) {
+    ctx.beginPath(); ctx.moveTo(0,gy); ctx.lineTo(W,gy); ctx.stroke();
+  }
+
+  // เตียงคนไข้ + ผนัง (ตกแต่ง)
+  const bedPositions = [
+    [300,80],[600,80],[900,80],[1200,80],[1600,80],[1900,80],[2200,80],[2600,80],
+    [300,400],[600,400],[900,400],[1200,400],[1600,400],[1900,400],[2200,400],[2600,400],
+  ];
+  for (const [bx,by] of bedPositions) {
+    const sx = bx - cx;
+    if (sx < -80 || sx > W+80) continue;
+    // เตียง
+    ctx.fillStyle = '#C8D8F0';
+    ctx.fillRect(sx, by, 72, 40);
+    ctx.fillStyle = '#E8F0FF';
+    ctx.fillRect(sx+4, by+4, 20, 32);  // หมอน
+    ctx.fillStyle = '#A0B8E0';
+    ctx.fillRect(sx, by+38, 72, 3);   // ขอบเตียง
+  }
+
+  // ป้ายกากบาทแดง
+  for (let i = 0; i < 6; i++) {
+    const sx = 400 + i*500 - cx;
+    if (sx < -20 && sx > W+20) continue;
+    px(sx-4, 230, 8, 24, '#E63946');
+    px(sx-12, 238, 24, 8, '#E63946');
+  }
+
+  // วาด patients
+  for (const pat of lvl.patients) {
+    const sx = pat.x - cx;
+    if (sx < -80 || sx > W+80) continue;
+    drawPatient(sx, pat.y, pat.healed);
+  }
+
+  // วาด viruses
+  for (const v of lvl.viruses) {
+    if (!v.alive) continue;
+    const sx = v.x - cx;
+    // glow ของ virus
+    ctx.save();
+    ctx.globalAlpha = 0.2 + Math.sin(Date.now()/200)*0.1;
+    ctx.fillStyle = '#7B2D8E';
+    ctx.beginPath(); ctx.arc(sx+14, v.y+14, 22, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+    drawVirus(sx, v.y, 4);
+  }
+
+  // shadow + player
+  if (p && (p.invuln === 0 || p.invuln % 6 < 3)) {
+    ctx.fillStyle = 'rgba(0,0,0,0.15)';
+    ctx.beginPath(); ctx.ellipse(p.x-cx+16, p.y+62, 18, 7, 0, 0, Math.PI*2); ctx.fill();
+    drawKungKing(p.x - cx, p.y, p.state, p.dir, 4);
+  }
+  if (p && p.kickEffect) {
+    drawKickEffect(p.kickEffect.worldX - cx, p.kickEffect.y, p.kickEffect.frame);
+  }
+
+  // HUD ด้านบน
+  const alive = lvl.viruses.filter(v => v.alive).length;
+  const healed = lvl.patients.filter(p => p.healed).length;
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillRect(10, 10, 300, 44);
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 18px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText(`🦠 เชื้อโรคเหลือ: ${alive}/4   💊 หาย: ${healed}/4`, 20, 38);
+}
+
 // Runner: กุ๊งกิ๊งวิ่งปกป้องมอมแมม
 function updateStageRun(lvl) {
   if (!GAME.player) GAME.player = newPlayer(40, 240);
@@ -1784,10 +1909,12 @@ function loop() {
     const lvl = GAME.level;
     if (lvl.type === 'platform') {
       updateStage1or4(lvl, GAME.player);
-      // camera follows player
       camX = Math.max(0, Math.min(lvl.width - W, GAME.player.x - W/2 + 32));
       GAME.camX = camX;
       drawStage(lvl, GAME.player, camX);
+    } else if (lvl.type === 'topdown') {
+      updateHospitalTopdown(lvl);
+      drawHospitalTopdown(lvl);
     } else if (lvl.type === 'catch' || lvl.type === 'run') {
       updateStageRun(lvl);
       drawStage2(lvl);
@@ -1816,12 +1943,9 @@ function loop() {
       const alive = lvl.cats ? lvl.cats.filter(c=>c.alive).length : 0;
       hint.textContent = `เตะแมวอันธพาลด้วย Z/X ก่อนมอมแมม HP หมด! HP: ${mm ? mm.hp : 0}/${mm ? mm.maxHp : 100} | แมวร้ายเหลือ ${alive} ตัว`;
     }
-    if (GAME.stage === 2 && lvl.type === 'platform') {
-      const allDead = lvl.viruses && lvl.viruses.every(v => !v.alive);
-      const healedCount = lvl.patients ? lvl.patients.filter(p => p.healed).length : 0;
-      hint.textContent = allDead
-        ? `🎉 เชื้อโรคหมดแล้ว! คนไข้หาย ${healedCount}/${lvl.patients.length} คน – วิ่งไป GOAL!`
-        : `กด Z หรือ X เพื่อ เตะ เชื้อโรค! | กระโดดแล้วเหยียบก็ได้`;
+    if (GAME.stage === 2 && lvl.type === 'topdown') {
+      const alive = lvl.viruses ? lvl.viruses.filter(v=>v.alive).length : 0;
+      hint.textContent = `กด Z หรือ X เตะเชื้อโรค! เชื้อโรคเหลือ ${alive} ตัว`;
     }
   } else {
     hud.innerHTML = '';
@@ -1859,7 +1983,7 @@ function loadStage(n) {
   lvl.isFinal = (n === FINAL_STAGE_NUMBER);
   GAME.level = lvl;
   if (lvl.type === 'platform') GAME.player = newPlayer(40, lvl.groundY - 64);
-  else if (lvl.type === 'run') GAME.player = newPlayer(40, 240);
+  else if (lvl.type === 'run' || lvl.type === 'topdown') GAME.player = newPlayer(40, 240);
   else GAME.player = null;
   hint.textContent = '';
 
