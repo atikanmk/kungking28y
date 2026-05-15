@@ -1,0 +1,1760 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>28ปี กุ๊งกิ๊งยอดนักสืบ</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    background: #1a1a2e;
+    overflow: hidden;
+    font-family: 'Courier New', monospace;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #gameWrap {
+    position: relative;
+    width: 960px; height: 540px;
+    box-shadow: 0 0 30px rgba(0,0,0,0.8);
+    background: #87CEEB;
+  }
+  canvas {
+    display: block;
+    width: 100%; height: 100%;
+    image-rendering: pixelated;
+    image-rendering: -moz-crisp-edges;
+    image-rendering: crisp-edges;
+  }
+  #hud {
+    position: absolute; top: 8px; left: 8px;
+    color: #fff;
+    font-size: 24px;
+    text-shadow: 2px 2px 0 #000;
+    pointer-events: none;
+    z-index: 5;
+  }
+  #hint {
+    position: absolute; bottom: 8px; left: 50%;
+    transform: translateX(-50%);
+    color: #fff;
+    font-size: 18px;
+    text-shadow: 2px 2px 0 #000;
+    pointer-events: none;
+    z-index: 5;
+  }
+  .overlay {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    flex-direction: column;
+    color: #fff;
+    text-align: center;
+    pointer-events: auto;
+    z-index: 10;
+  }
+  .overlay.hidden { display: none; }
+  .panel {
+    background: rgba(0,0,0,0.55);
+    border: 4px solid #fff;
+    padding: 28px 40px;
+    max-width: 80%;
+  }
+  .panel h1 { font-size: 36px; margin-bottom: 12px; text-shadow: 3px 3px 0 #d8326b; }
+  .panel h2 { font-size: 26px; margin-bottom: 10px; }
+  .panel p { font-size: 16px; line-height: 1.5; margin: 8px 0; }
+  .panel button {
+    margin-top: 14px;
+    padding: 10px 22px;
+    background: #ffcc00;
+    border: 3px solid #fff;
+    color: #222;
+    font-family: inherit;
+    font-size: 18px;
+    font-weight: bold;
+    cursor: pointer;
+    text-shadow: none;
+  }
+  .panel button:hover { background: #fff; }
+  .levelBtns { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 10px; }
+</style>
+</head>
+<body>
+<div id="gameWrap">
+  <canvas id="game" width="960" height="540"></canvas>
+  <div id="hud"></div>
+  <div id="hint"></div>
+
+  <div id="titleScreen" class="overlay">
+    <div class="panel">
+      <h1>28ปี กุ๊งกิ๊งยอดนักสืบ</h1>
+      <p>การผจญภัยของพยาบาลสาวนักสืบสุดเก่ง</p>
+      <p style="font-size:13px; opacity:0.8;">ใช้ปุ่ม ← → หรือ A/D เพื่อเดิน · Space หรือ ↑ เพื่อกระโดด</p>
+      <button onclick="startGame()">เริ่มเกม</button>
+      <button onclick="showLevels()">เลือกด่าน</button>
+    </div>
+  </div>
+
+  <div id="levelScreen" class="overlay hidden">
+    <div class="panel">
+      <h2>เลือกด่าน</h2>
+      <p style="font-size:13px;">เรื่องราว 1 ปีของกุ๊งกิ๊ง</p>
+      <div class="levelBtns">
+        <button onclick="loadStage(1)">1. โรงพยาบาล</button>
+        <button onclick="loadStage(2)">2. รับของขวัญ</button>
+        <button onclick="loadStage(3)">3. ภาพแห่งความทรงจำ</button>
+        <button onclick="loadStage(4)">4. วันเกิด</button>
+      </div>
+      <button onclick="hide('levelScreen'); show('titleScreen')">กลับ</button>
+    </div>
+  </div>
+
+  <div id="messageScreen" class="overlay hidden">
+    <div class="panel" id="messagePanel"></div>
+  </div>
+</div>
+
+<script>
+/* =========================================================
+   28ปี กุ๊งกิ๊งยอดนักสืบ - Pixel art birthday mini-game
+   Single-file HTML5 Canvas game
+   ========================================================= */
+
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+ctx.imageSmoothingEnabled = false;
+
+const W = canvas.width;   // 480
+const H = canvas.height;  // 270
+
+const hud = document.getElementById('hud');
+const hint = document.getElementById('hint');
+
+/* ----------------- INPUT ----------------- */
+const keys = {};
+window.addEventListener('keydown', e => {
+  keys[e.key.toLowerCase()] = true;
+  if (['arrowup','arrowdown','arrowleft','arrowright',' '].includes(e.key.toLowerCase())) e.preventDefault();
+});
+window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+
+function held(...ks) { return ks.some(k => keys[k.toLowerCase()]); }
+
+/* ----------------- HELPERS ----------------- */
+function show(id) { document.getElementById(id).classList.remove('hidden'); }
+function hide(id) { document.getElementById(id).classList.add('hidden'); }
+function showMessage(html, onClose) {
+  const panel = document.getElementById('messagePanel');
+  panel.innerHTML = html;
+  const btn = document.createElement('button');
+  btn.textContent = 'ต่อไป';
+  btn.onclick = () => { hide('messageScreen'); onClose && onClose(); };
+  panel.appendChild(btn);
+  show('messageScreen');
+}
+
+/* ----------------- PIXEL DRAWING HELPERS ----------------- */
+function px(x, y, w, h, color) {
+  ctx.fillStyle = color;
+  ctx.fillRect(Math.floor(x), Math.floor(y), Math.floor(w), Math.floor(h));
+}
+
+/* Draw pixel art from a grid string. '.' = transparent, other chars map to palette */
+function drawSprite(grid, palette, x, y, scale = 1) {
+  for (let row = 0; row < grid.length; row++) {
+    const line = grid[row];
+    for (let col = 0; col < line.length; col++) {
+      const ch = line[col];
+      if (ch === '.' || ch === ' ') continue;
+      const color = palette[ch];
+      if (!color) continue;
+      px(x + col * scale, y + row * scale, scale, scale, color);
+    }
+  }
+}
+
+/* ----------------- BACKGROUND ----------------- */
+// Background sky color
+const SKY = '#7BC8E8';
+const SKY_LIGHT = '#9EDCEF';
+
+function drawCloud(x, y) {
+  const c1 = '#ffffff', c2 = '#e8f4fb';
+  const s = 6;
+  const grid = [
+    '..####....',
+    '.######.##',
+    '##########',
+    '.########.',
+  ];
+  drawSprite(grid, {'#': c1}, x, y, s);
+  drawSprite([
+    '..........',
+    '..........',
+    '..oo...oo.',
+    '..........',
+  ], {'o': c2}, x, y, s);
+}
+
+function drawTree(x, groundY) {
+  const trunkColor = '#8B5A2B';
+  const trunkDark = '#5C3A1A';
+  const leaves = '#3FA64D';
+  const leavesDark = '#2E7D38';
+  const leavesLight = '#5DC065';
+
+  // trunk
+  px(x + 20, groundY - 44, 12, 44, trunkColor);
+  px(x + 20, groundY - 44, 4, 44, trunkDark);
+
+  // leaves
+  const lg = [
+    '..####..',
+    '.######.',
+    '########',
+    '########',
+    '########',
+    '.######.',
+    '..####..',
+  ];
+  drawSprite(lg, {'#': leaves}, x, groundY - 100, 8);
+  drawSprite([
+    '..oo....',
+    '.o......',
+    'o.......',
+    '........',
+    '........',
+    '........',
+    '........',
+  ], {'o': leavesLight}, x, groundY - 100, 8);
+  drawSprite([
+    '......dd',
+    '.......d',
+    '........',
+    '........',
+    '.......d',
+    '......dd',
+    '..ddddd.',
+  ], {'d': leavesDark}, x, groundY - 100, 8);
+}
+
+function drawBush(x, groundY) {
+  const c = '#3FA64D', cd = '#2E7D38', cl = '#5DC065';
+  drawSprite([
+    '..####..',
+    '.######.',
+    '########',
+    '########',
+  ], {'#': c}, x, groundY - 32, 4);
+  drawSprite([
+    '..oo....',
+    '.o......',
+    'o.......',
+    '........',
+  ], {'o': cl}, x, groundY - 32, 4);
+  drawSprite([
+    '......dd',
+    '.......d',
+    '........',
+    '.dddddd.',
+  ], {'d': cd}, x, groundY - 32, 4);
+}
+
+function drawGround(groundY) {
+  px(0, groundY, W, 12, '#5DC065');
+  px(0, groundY + 12, W, 4, '#3FA64D');
+  px(0, groundY + 16, W, H - groundY - 16, '#7E4A22');
+  for (let i = 0; i < 80; i++) {
+    const dx = (i * 47) % W;
+    const dy = groundY + 28 + ((i * 31) % (H - groundY - 32));
+    px(dx, dy, 4, 4, '#5C3214');
+  }
+  for (let i = 0; i < 60; i++) {
+    const gx = (i * 23) % W;
+    px(gx, groundY - 2, 4, 2, '#7BD478');
+  }
+}
+
+let cloudOffset = 0;
+function drawSkyBackground(groundY, opts = {}) {
+  // sky gradient
+  px(0, 0, W, groundY - 60, SKY);
+  px(0, groundY - 60, W, 60, SKY_LIGHT);
+
+  cloudOffset = (cloudOffset + 0.3) % W;
+  const clouds = [
+    {x: 40, y: 60}, {x: 360, y: 36}, {x: 680, y: 72}, {x: 160, y: 120}, {x: 560, y: 140},
+  ];
+  for (const c of clouds) {
+    let cx = (c.x - cloudOffset);
+    while (cx < -120) cx += W + 120;
+    drawCloud(cx, c.y);
+  }
+}
+
+/* ----------------- KUNGKING SPRITE (chibi cute) ----------------- */
+// Pink headband + black bob + big sparkly eyes + blush + white shirt + denim shorts
+const KK_PALETTE = {
+  's': '#FFE0C2', // skin (light)
+  'S': '#F4C896', // skin shadow
+  'h': '#1a1a1a', // hair black
+  'H': '#3a2a2a', // hair shine
+  'p': '#FFB6D5', // pink headband
+  'P': '#FF8FBE', // pink headband shadow
+  'w': '#FFFFFF', // white shirt
+  'W': '#E0E0EA', // shirt shadow
+  'e': '#1a1a1a', // eye outline
+  'i': '#FFFFFF', // eye highlight
+  'B': '#FFB6C1', // blush
+  'm': '#D85370', // mouth/lips
+  'd': '#4F7CB0', // denim shorts
+  'D': '#3D6090', // denim shadow
+  'b': '#2A2A2A', // shoe
+  'r': '#E63946', // red (for nurse cross on hat - optional)
+  'c': '#FFFFFF', // nurse cap (optional swap with hospital scene)
+};
+
+// 16x20 sprite, scale 2 -> 32x40
+const KK_IDLE = [
+  '................',  // 0
+  '....hhhhhhhh....',  // 1 hair top
+  '..hhhhhhhhhhhh..',  // 2 hair widens
+  '.pppppppppppppp.',  // 3 pink headband (full width)
+  '.PppppppppppppP.',  // 4 band w/ shadow corners
+  '.hhhhhhhhhhhhhh.',  // 5 bangs (hair below band)
+  '.hssssssssssssh.',  // 6 face plain
+  '.hssHHssssHHssh.',  // 7 eyebrows
+  '.hssiessssiessh.',  // 8 eyes top w/ sparkle highlight
+  '.hsseesssseessh.',  // 9 eyes bottom
+  '.hssssssssssssh.',  // 10
+  '.hsBssssssssBsh.',  // 11 blush
+  '..hssssmmmssssh.',  // 12 small smile
+  '..hssssssssssh..',  // 13 chin
+  '...wwwwwwwwww...',  // 14 collar
+  '..wwwwwwwwwwww..',  // 15 shirt
+  '.wwwwwwwwwwwwww.',  // 16 shirt wider
+  '..dddddddddddd..',  // 17 denim shorts
+  '...ss......ss...',  // 18 legs
+  '...bb......bb...',  // 19 shoes
+];
+
+const KK_WALK1 = [
+  '................',
+  '....hhhhhhhh....',
+  '..hhhhhhhhhhhh..',
+  '.pppppppppppppp.',
+  '.PppppppppppppP.',
+  '.hhhhhhhhhhhhhh.',
+  '.hssssssssssssh.',
+  '.hssHHssssHHssh.',
+  '.hssiessssiessh.',
+  '.hsseesssseessh.',
+  '.hssssssssssssh.',
+  '.hsBssssssssBsh.',
+  '..hssssmmmssssh.',
+  '..hssssssssssh..',
+  '...wwwwwwwwww...',
+  '..wwwwwwwwwwww..',
+  '.wwwwwwwwwwwwww.',
+  '..dddddddddddd..',
+  '..ss........ss..',
+  '..bb........bb..',
+];
+
+const KK_WALK2 = [
+  '................',
+  '....hhhhhhhh....',
+  '..hhhhhhhhhhhh..',
+  '.pppppppppppppp.',
+  '.PppppppppppppP.',
+  '.hhhhhhhhhhhhhh.',
+  '.hssssssssssssh.',
+  '.hssHHssssHHssh.',
+  '.hssiessssiessh.',
+  '.hsseesssseessh.',
+  '.hssssssssssssh.',
+  '.hsBssssssssBsh.',
+  '..hssssmmmssssh.',
+  '..hssssssssssh..',
+  '...wwwwwwwwww...',
+  '..wwwwwwwwwwww..',
+  '.wwwwwwwwwwwwww.',
+  '..dddddddddddd..',
+  '....ss....ss....',
+  '....bb....bb....',
+];
+
+const KK_JUMP = [
+  '................',
+  '....hhhhhhhh....',
+  '..hhhhhhhhhhhh..',
+  '.pppppppppppppp.',
+  '.PppppppppppppP.',
+  '.hhhhhhhhhhhhhh.',
+  '.hssssssssssssh.',
+  '.hssHHssssHHssh.',
+  '.hssiessssiessh.',  // excited but eyes still visible
+  '.hsseesssseessh.',
+  '.hssssssssssssh.',
+  '.hsBsssOOOsssBh.',  // open "o" mouth (excited)
+  '..hssssOssssssh.',
+  'wwwwwwwwwwwwwwww',  // arms up!
+  '..wwwwwwwwwwww..',
+  '.wwwwwwwwwwwwww.',
+  '..dddddddddddd..',
+  '....ss....ss....',
+  '....ss....ss....',
+  '....bb....bb....',
+];
+
+// Kick pose: body leans back, kick leg extends forward clearly
+const KK_KICK = [
+  '................',  // 0
+  '....hhhhhhhh....',  // 1 hair top
+  '..hhhhhhhhhhhh..',  // 2
+  '.pppppppppppppp.',  // 3 headband
+  '.PppppppppppppP.',  // 4
+  '.hhhhhhhhhhhhhh.',  // 5 bangs
+  '.hssssssssssssh.',  // 6 face
+  '.hssHHssssHHssh.',  // 7 brows (fierce!)
+  '.hssHissssHissh.',  // 8 squint eyes (H=brow over i=tiny highlight)
+  '.hssHessssHessh.',  // 9 iris under heavy brow
+  '.hssssssssssssh.',  // 10
+  '.hsBsssOOOsssBh.',  // 11 blush + open mouth
+  '..hssssOssssssh.',  // 12
+  '..hssssssssssh..',  // 13 chin
+  'wwwwww......www.',  // 14 LEFT arm forward (0-5), RIGHT arm pulled back (12-14)
+  '.wwwwwwwwwwwwww.',  // 15 shirt
+  '.wwwwwwwwwwwwww.',  // 16 shirt
+  '..ddddddddd.....',  // 17 pants waist (body leaning back = shifted left)
+  '..ddd.dddddddd..',  // 18 back leg left (2-4) | kick THIGH right (6-13)
+  '..ddd..dddssssss',  // 19 back leg     | kick SHIN: pants(7-9)+skin(10-15)
+  '..bbb..dddsssssb',  // 20 back SHOE    | kick: knee pants(7-9)+skin(10-14)+shoe tip(15)
+  '.......ddd..bbbb',  // 21              | kick shin(7-9) + kick SHOE(12-15) ← BIG SHOE!
+];
+
+function drawKungKing(x, y, state, dir, scale = 2) {
+  let grid = KK_IDLE;
+  if (state === 'walk') {
+    // alternate walk frames every ~10 frames
+    grid = (Math.floor((Date.now() / 120)) % 2 === 0) ? KK_WALK1 : KK_WALK2;
+  }
+  if (state === 'jump') grid = KK_JUMP;
+  if (state === 'kick') grid = KK_KICK;
+  const pal = Object.assign({}, KK_PALETTE, {'0': '#1a1a1a', 'O': '#D85370'});
+  if (dir === -1) {
+    for (let row = 0; row < grid.length; row++) {
+      const line = grid[row];
+      for (let col = 0; col < line.length; col++) {
+        const ch = line[line.length - 1 - col];
+        if (ch === '.' || ch === ' ') continue;
+        const color = pal[ch];
+        if (!color) continue;
+        px(x + col * scale, y + row * scale, scale, scale, color);
+      }
+    }
+  } else {
+    drawSprite(grid, pal, x, y, scale);
+  }
+
+  // Add tiny sparkle next to head when idle (cute effect)
+  if (state === 'idle') {
+    const t = Math.floor(Date.now() / 300) % 2;
+    if (t === 0) {
+      const sx = x + (dir === 1 ? 30 : -4);
+      const sy = y + 4;
+      px(sx, sy, 2, 2, '#FFD700');
+      px(sx - 2, sy + 2, 2, 2, '#FFD700');
+      px(sx + 2, sy + 2, 2, 2, '#FFD700');
+      px(sx, sy + 4, 2, 2, '#FFD700');
+    }
+  }
+}
+
+/* ----------------- ITEMS ----------------- */
+function drawHeart(x, y, s = 2) {
+  drawSprite([
+    '.##.##.',
+    '#######',
+    '#######',
+    '.#####.',
+    '..###..',
+    '...#...',
+  ], {'#': '#E63946'}, x, y, s);
+}
+
+function drawPill(x, y, s = 2) {
+  drawSprite([
+    '.wwwww.',
+    'wwwwwrr',
+    'wwwwwrr',
+    'wwwwwrr',
+    '.rrrrr.',
+  ], {'w': '#FFFFFF', 'r': '#E63946'}, x, y, s);
+}
+
+function drawCake(x, y, s = 2) {
+  drawSprite([
+    '....c....',
+    '...ccc...',
+    '....c....',
+    '.fffffff.',
+    '.fwfwfwf.',
+    '.fffffff.',
+    'bbbbbbbbb',
+    'bbpbpbpbb',
+    'bbbbbbbbb',
+  ], {
+    'c': '#FFD700',
+    'f': '#FFB6C1',
+    'w': '#FFFFFF',
+    'b': '#A0522D',
+    'p': '#FF69B4'
+  }, x, y, s);
+}
+
+function drawGift(x, y, s = 2) {
+  drawSprite([
+    '..yy.yy..',
+    '..yy.yy..',
+    'ppppppppp',
+    'ppy.p.ypp',
+    'pppppppp.',
+    'ppy.p.ypp',
+    'ppppppppp',
+  ], {'p': '#FF4D6D', 'y': '#FFD700'}, x, y, s);
+}
+
+function drawVirus(x, y, s = 2) {
+  drawSprite([
+    'g..g..g',
+    '.ggggg.',
+    'ggwgwgg',
+    'gggggg.',  // tweaked
+    'ggwgwgg',
+    '.ggggg.',
+    'g..g..g',
+  ], {'g': '#7B2D8E', 'w': '#FFFFFF'}, x, y, s);
+}
+
+// Cat enemy (chibi)
+// Cat walking animation frame A (front legs forward)
+function drawCatWalkA(x, y, s = 4) {
+  drawSprite([
+    '..eee...eee...',
+    '..eFFFFFe.....',
+    '.FFFFFFFFFFF..',
+    '.FooFFFFFooF..',
+    '.FFFFnnFFFFF..',
+    'wFFFFFFFFFFFww',
+    'wwFFFFFFFFFwww',
+    '.FFFFFFFFFFF..',
+    '.FFFFFFFFF....',
+    '.FFFFFFFFF..TT',
+    '.FFFFFFF..TTTT',
+    '.bb...bb......',  // front paws forward
+    '......bb......',  // back paw back
+  ], {
+    'e':'#7A3B10','F':'#FF8C00','o':'#111111',
+    'n':'#FF6699','w':'#FFD080','T':'#CC6000','b':'#995522',
+  }, x, y, s);
+}
+
+// Cat walking animation frame B (back legs forward)
+function drawCatWalkB(x, y, s = 4) {
+  drawSprite([
+    '..eee...eee...',
+    '..eFFFFFe.....',
+    '.FFFFFFFFFFF..',
+    '.FooFFFFFooF..',
+    '.FFFFnnFFFFF..',
+    'wFFFFFFFFFFFww',
+    'wwFFFFFFFFFwww',
+    '.FFFFFFFFFFF..',
+    '.FFFFFFFFF....',
+    '.FFFFFFFFF..TT',
+    '.FFFFFFF..TTTT',
+    '....bb...bb...',  // front paw back
+    '....bb........',  // back paws forward
+  ], {
+    'e':'#7A3B10','F':'#FF8C00','o':'#111111',
+    'n':'#FF6699','w':'#FFD080','T':'#CC6000','b':'#995522',
+  }, x, y, s);
+}
+
+// Cat knocked out (lying on back, Xs for eyes, tongue out)
+function drawCatKO(x, y, s = 4) {
+  drawSprite([
+    '..FFFFFFFFFFF.',  // body rotated = now horizontal
+    '.FFFFFFFFFFFw.',  // belly with whisker
+    'wFFFxFFFxFFFww',  // X eyes (dizzy)
+    '.FFFFFuFFFFFFF',  // tongue out
+    '.FFFFFFFFFFFb.',  // paw up
+    '..eeFFFFFFee..',  // ears on sides now (upside down cat)
+    '..bbb..bbb....',  // paws sticking up
+  ], {
+    'F':'#FF8C00','e':'#7A3B10','x':'#111111',
+    'u':'#FF6699','w':'#FFD080','b':'#995522',
+  }, x, y, s);
+}
+
+// Cat sprite (idle / default)
+function drawCat(x, y, s = 4) {
+  drawCatWalkA(x, y, s);
+}
+
+// Seed particle (collectible to throw)
+function drawSeed(x, y, s = 3) {
+  drawSprite([
+    '..o..',
+    '.ooo.',
+    'ooooo',
+    '.ooo.',
+    '..o..',
+  ], {'o':'#DDB84D'}, x, y, s);
+}
+
+// Kick impact burst (star/hit effect)
+function drawKickEffect(x, y, frame) {
+  const t = frame / 20;
+  const r = 8 + t * 24;
+  const colors = ['#FFD700','#FF4D6D','#fff'];
+  for (let i = 0; i < 6; i++) {
+    const angle = (i / 6) * Math.PI * 2 + t;
+    const ex = x + Math.cos(angle) * r;
+    const ey = y + Math.sin(angle) * r;
+    px(ex - 4, ey - 4, 8, 8, colors[i % colors.length]);
+  }
+  const s = 6;
+  if (frame < 12) {
+    px(x - s, y - 2, s * 2, 4, '#FFD700');
+    px(x - 2, y - s, 4, s * 2, '#FFD700');
+  }
+  if (frame < 15) {
+    ctx.fillStyle = '#FF4D6D';
+    ctx.font = `bold ${14 + Math.floor(t * 6)}px monospace`;
+    ctx.fillText('KICK!', x - 24, y - 12 - t * 12);
+  }
+}
+
+// Sick patient lying in bed
+function drawPatient(x, y, healed) {
+  if (!healed) {
+    // Bed
+    px(x, y + 20, 56, 16, '#C8A87A');
+    px(x, y + 20, 56, 4,  '#E0C090');
+    // Pillow
+    px(x + 2, y + 16, 20, 12, '#FFFDE0');
+    // Patient body
+    drawSprite([
+      '..ssss......',
+      '.sssssss....',
+      'hhhsssshh...',
+      '...GGGGGGGG.',
+      '...GGGGGGGG.',
+      '...GGGGGG...',
+    ], {
+      's': '#F0D0B0',
+      'h': '#2a2a2a',
+      'G': '#AAAACC',
+    }, x, y + 8, 4);
+    // sick eyes + mouth
+    px(x + 8,  y + 16, 4, 4, '#E63946');
+    px(x + 20, y + 16, 4, 4, '#E63946');
+    px(x + 10, y + 24, 12, 4, '#D85370');
+    // sweat drop
+    px(x + 28, y + 8,  4, 8, '#9EDCEF');
+  } else {
+    // Healed patient standing, arms up
+    drawSprite([
+      '....ssss....',
+      '...sssssss..',
+      '...hhhhhhhh.',
+      '...ssssssss.',
+      '...ssssssss.',
+      'ww.wwwwwwwww',
+      '...wwwwwwww.',
+      '...wwwwwwww.',
+      '...dddddddd.',
+      '....ss..ss..',
+      '....bb..bb..',
+    ], {
+      's': '#FFE0C2',
+      'h': '#1a1a1a',
+      'w': '#FFFFFF',
+      'd': '#4F7CB0',
+      'b': '#2A2A2A',
+    }, x, y, 4);
+    // happy face
+    px(x + 12, y + 16, 4, 4, '#1a1a1a');
+    px(x + 24, y + 16, 4, 4, '#1a1a1a');
+    px(x + 12, y + 24, 16, 4, '#D85370');
+    // sparkles
+    const st = Math.floor(Date.now() / 250) % 2;
+    if (st === 0) {
+      px(x + 2,  y + 4,  4, 4, '#FFD700');
+      px(x + 44, y + 8,  4, 4, '#FFD700');
+      px(x + 28, y,      4, 4, '#FFD700');
+    }
+    ctx.fillStyle = '#3FA64D';
+    ctx.font = 'bold 14px monospace';
+    ctx.fillText('หายแล้ว! 💊', x - 4, y - 8);
+  }
+}
+
+function drawCoin(x, y, frame = 0) {
+  const w = (frame % 30) < 15 ? 8 : 4;
+  ctx.fillStyle = '#FFD700';
+  ctx.fillRect(x + (8 - w) / 2, y, w, 8);
+  ctx.fillStyle = '#FFA500';
+  ctx.fillRect(x + (8 - w) / 2, y + 6, w, 2);
+}
+
+/* ----------------- GAME STATE ----------------- */
+const GAME = {
+  stage: 0,         // 0 = title
+  player: null,
+  level: null,
+  score: 0,
+  lives: 3,
+  timer: 0,
+  totalScore: 0,
+  state: 'title',   // title | playing | win | lose | ending
+};
+
+/* ----------------- STAGE 1: Hospital Platformer ----------------- */
+function buildStage1() {
+  const ground = 440;
+  return {
+    name: 'ด่าน 1: โรงพยาบาล',
+    intro: 'กุ๊งกิ๊งทำงานเป็นพยาบาลที่โรงพยาบาล\nกด Z หรือ X เพื่อเตะเชื้อโรค!\nกำจัดเชื้อโรคให้หมด แล้วไปที่ GOAL!',
+    type: 'platform',
+    winCondition: 'viruses',
+    groundY: ground,
+    width: 3200,
+    platforms: [
+      {x: 400, y: 360, w: 120},
+      {x: 640, y: 300, w: 120},
+      {x: 920, y: 240, w: 160},
+      {x: 1240, y: 320, w: 120},
+      {x: 1520, y: 260, w: 140},
+      {x: 1800, y: 340, w: 160},
+      {x: 2120, y: 280, w: 120},
+      {x: 2400, y: 340, w: 120},
+      {x: 2680, y: 280, w: 160},
+    ],
+    pills: [
+      {x: 440, y: 312, taken: false},
+      {x: 680, y: 252, taken: false},
+      {x: 980, y: 192, taken: false},
+      {x: 1280, y: 272, taken: false},
+      {x: 1560, y: 212, taken: false},
+      {x: 1840, y: 292, taken: false},
+      {x: 2160, y: 232, taken: false},
+      {x: 2440, y: 292, taken: false},
+      {x: 2720, y: 232, taken: false},
+      {x: 200,  y: 396, taken: false},
+      {x: 1100, y: 396, taken: false},
+      {x: 2000, y: 396, taken: false},
+    ],
+    hearts: [
+      {x: 1400, y: 390, taken: false},
+      {x: 2300, y: 390, taken: false},
+    ],
+    viruses: [
+      {x: 800,  baseX: 800,  range: 160, y: 408, dir:  1, alive: true},
+      {x: 1400, baseX: 1400, range: 120, y: 408, dir:  1, alive: true},
+      {x: 2100, baseX: 2100, range: 180, y: 408, dir: -1, alive: true},
+      {x: 2600, baseX: 2600, range: 140, y: 408, dir:  1, alive: true},
+    ],
+    patients: [
+      {x: 660,  y: 390, virusIdx: 0, healed: false},
+      {x: 1280, y: 390, virusIdx: 1, healed: false},
+      {x: 1940, y: 390, virusIdx: 2, healed: false},
+      {x: 2460, y: 390, virusIdx: 3, healed: false},
+    ],
+    goal: {x: 3000, y: 408},
+    bg: 'hospital',
+    target: 8,
+    secretMsg: 'กุ๊งกิ๊งเป็นนางฟ้าชุดขาวที่ทำให้คนไข้หายดี ❤',
+  };
+}
+
+/* ----------------- STAGE 2: Catch the Gifts ----------------- */
+function buildStage2() {
+  const cats = [];
+  for (let i = 0; i < 10; i++) {
+    cats.push({
+      x: 300 + i * 340,
+      y: 80 + Math.random() * 340,
+      vx: 0, vy: 0,
+      alive: true,
+      frame: 0,          // walk animation counter
+      kickEffect: null,
+      koTimer: 0,        // countdown after being knocked out (plays KO anim before disappearing)
+    });
+  }
+  return {
+    name: 'ด่าน 2: ไล่เตะแมว',
+    intro: 'มีแมว 10 ตัววิ่งหนีกุ๊งกิ๊ง!\nใช้ ← → ↑ ↓ วิ่งทุกทิศทาง\nกด Z หรือ X เพื่อเตะให้ครบทุกตัว',
+    type: 'run',
+    width: 3800,
+    height: 540,
+    cats: cats,
+    bg: 'topdown',
+    secretMsg: 'กุ๊งกิ๊งวิ่งเร็วที่สุด ไม่มีอะไรหนีได้! 🐾',
+  };
+}
+
+/* ----------------- STAGE 3: Memory Match ----------------- */
+function buildStage3() {
+  // 12 cards, 6 pairs of icons
+  const icons = ['heart','pill','cake','gift','star','flower'];
+  const deck = [...icons, ...icons].map(i => ({icon: i, flipped: false, matched: false}));
+  // shuffle
+  for (let i = deck.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [deck[i], deck[j]] = [deck[j], deck[i]];
+  }
+  return {
+    name: 'ด่าน 3: ภาพแห่งความทรงจำ',
+    intro: 'นักสืบกุ๊งกิ๊งต้องจับคู่ภาพความทรงจำ\nคลิกการ์ดเพื่อเปิด หาคู่ให้ครบทุกใบ',
+    type: 'memory',
+    cards: deck,
+    selected: [],
+    matchedCount: 0,
+    moves: 0,
+    cooldown: 0,
+    bg: 'sky',
+    secretMsg: 'ทุกความทรงจำของกุ๊งกิ๊งคือสมบัติล้ำค่า 💖',
+  };
+}
+
+/* ----------------- STAGE 4: Birthday Finale ----------------- */
+function buildStage4() {
+  return {
+    name: 'ด่าน 4: วันเกิด',
+    intro: 'วันสำคัญมาถึงแล้ว! เก็บเค้กวันเกิดให้ได้ครบ\nแล้วไปที่ป้าย HAPPY BIRTHDAY',
+    type: 'platform',
+    groundY: 440,
+    width: 2800,
+    platforms: [
+      {x: 360, y: 360, w: 120},
+      {x: 600, y: 300, w: 120},
+      {x: 880, y: 240, w: 160},
+      {x: 1200, y: 300, w: 120},
+      {x: 1480, y: 260, w: 140},
+      {x: 1800, y: 320, w: 160},
+      {x: 2120, y: 280, w: 120},
+      {x: 2400, y: 220, w: 200},
+    ],
+    pills: [],
+    hearts: [],
+    cakes: [
+      {x: 400, y: 312, taken: false},
+      {x: 640, y: 252, taken: false},
+      {x: 940, y: 192, taken: false},
+      {x: 1240, y: 252, taken: false},
+      {x: 1520, y: 212, taken: false},
+      {x: 1840, y: 272, taken: false},
+      {x: 2160, y: 232, taken: false},
+      {x: 2460, y: 172, taken: false},
+    ],
+    gifts: [
+      {x: 800, y: 390, taken: false},
+      {x: 1600, y: 390, taken: false},
+      {x: 2300, y: 390, taken: false},
+    ],
+    viruses: [],
+    goal: {x: 2680, y: 408},
+    bg: 'party',
+    target: 6,
+    isFinal: true,
+    secretMsg: 'สุขสันต์วันเกิดครบรอบ 28 ปีนะกุ๊งกิ๊ง 🎂',
+  };
+}
+
+/* ----------------- PLAYER ----------------- */
+function newPlayer(x, y) {
+  return {
+    x, y,
+    w: 32, h: 64,
+    vx: 0, vy: 0,
+    onGround: false,
+    dir: 1,
+    state: 'idle',
+    animTimer: 0,
+    coyote: 0,
+    invuln: 0,
+    kickTimer: 0,      // > 0 = kicking
+    kickEffect: null,  // {x, y, frame} for hit burst
+  };
+}
+
+/* ----------------- PLATFORM PHYSICS ----------------- */
+function updatePlatformer(p, lvl, dt) {
+  const speed = 3.2;
+  const jumpV = 9.0;
+  const gravity = 0.44;
+
+  // Kick (Z or X key) - can kick on ground or in air
+  if ((held('z','x')) && p.kickTimer === 0) {
+    p.kickTimer = 22;
+  }
+  if (p.kickTimer > 0) p.kickTimer--;
+
+  // Horizontal input (slower when kicking on ground)
+  let moveX = 0;
+  if (!(p.kickTimer > 10 && p.onGround)) {
+    if (held('arrowleft','a')) moveX = -1;
+    if (held('arrowright','d')) moveX = 1;
+  }
+  p.vx = moveX * speed;
+  if (moveX !== 0) p.dir = moveX;
+
+  // Jump
+  if ((held(' ','arrowup','w')) && (p.onGround || p.coyote > 0)) {
+    p.vy = -jumpV;
+    p.onGround = false;
+    p.coyote = 0;
+  }
+
+  // Gravity
+  p.vy += gravity;
+  if (p.vy > 14) p.vy = 14;
+
+  // Move X
+  p.x += p.vx;
+  // Bound horizontally
+  if (p.x < 0) p.x = 0;
+  if (p.x + p.w > lvl.width) p.x = lvl.width - p.w;
+
+  // Move Y + ground collision
+  p.y += p.vy;
+  p.onGround = false;
+
+  // Ground
+  if (p.y + p.h >= lvl.groundY) {
+    p.y = lvl.groundY - p.h;
+    p.vy = 0;
+    p.onGround = true;
+  }
+
+  // Platforms (one-way)
+  if (p.vy >= 0) {
+    for (const plat of lvl.platforms) {
+      if (p.x + p.w > plat.x && p.x < plat.x + plat.w) {
+        const prevY = p.y - p.vy;
+        if (prevY + p.h <= plat.y + 4 && p.y + p.h >= plat.y && p.y + p.h <= plat.y + 24) {
+          p.y = plat.y - p.h;
+          p.vy = 0;
+          p.onGround = true;
+        }
+      }
+    }
+  }
+
+  if (p.onGround) p.coyote = 6;
+  else if (p.coyote > 0) p.coyote--;
+
+  // State
+  if (p.kickTimer > 0) p.state = 'kick';
+  else if (!p.onGround) p.state = 'jump';
+  else if (Math.abs(p.vx) > 0.1) p.state = 'walk';
+  else p.state = 'idle';
+  p.animTimer++;
+  if (p.invuln > 0) p.invuln--;
+}
+
+function collide(a, b) {
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+/* ----------------- DRAW SCENE / BACKGROUNDS ----------------- */
+function drawHospitalBg(camX, groundY) {
+  drawSkyBackground(groundY);
+  const bx = 100 - camX * 0.5;
+  for (let i = 0; i < 4; i++) {
+    const x = bx + i * 440;
+    drawHospital(x, groundY - 160);
+  }
+  for (let i = 0; i < 8; i++) {
+    drawTree((i * 440) - camX * 0.7, groundY);
+  }
+  for (let i = 0; i < 12; i++) {
+    drawBush(120 + i * 260 - camX, groundY);
+  }
+  drawGround(groundY);
+}
+
+function drawHospital(x, y) {
+  // building
+  px(x, y, 200, 160, '#E8E8F0');
+  px(x, y, 200, 16, '#C0C0D0');
+  // red cross top
+  px(x + 88, y - 32, 24, 8, '#E63946');
+  px(x + 96, y - 40, 8, 24, '#E63946');
+  // windows
+  for (let i = 0; i < 4; i++) {
+    for (let j = 0; j < 3; j++) {
+      px(x + 24 + i * 44, y + 40 + j * 40, 24, 24, '#9EDCEF');
+      px(x + 24 + i * 44, y + 40 + j * 40, 24, 2, '#777');
+    }
+  }
+  // door
+  px(x + 84, y + 112, 32, 48, '#8B5A2B');
+  px(x + 100, y + 136, 4, 4, '#FFD700');
+}
+
+function drawSkyBg(groundY) {
+  drawSkyBackground(groundY);
+  for (let i = 0; i < 6; i++) drawTree(i * 160, groundY);
+  drawGround(groundY);
+}
+
+function drawPartyBg(camX, groundY) {
+  drawSkyBackground(groundY);
+  const balloons = [{x: 160, y: 100, c: '#FF4D6D'},{x: 360, y: 60, c: '#FFD700'},{x: 600, y: 120, c: '#7B2D8E'},{x: 840, y: 80, c: '#3FA6FF'}];
+  for (const b of balloons) {
+    let bx = b.x - camX * 0.6;
+    while (bx < -80) bx += W + 80;
+    drawBalloon(bx, b.y, b.c);
+  }
+  for (let i = 0; i < 30; i++) {
+    const fx = (i * 100) - (camX * 0.8) % 100;
+    const colors = ['#FF4D6D','#FFD700','#3FA6FF','#7B2D8E','#5DC065'];
+    px(fx, 24 + (i%2)*8, 16, 16, colors[i % colors.length]);
+  }
+  for (let i = 0; i < 8; i++) drawTree(i * 400 - camX * 0.7, groundY);
+  for (let i = 0; i < 12; i++) drawBush(120 + i * 260 - camX, groundY);
+  drawGround(groundY);
+}
+
+function drawBalloon(x, y, c) {
+  drawSprite([
+    '.###.',
+    '#####',
+    '#####',
+    '#####',
+    '.###.',
+    '..#..',
+    '..#..',
+  ], {'#': c}, x, y, 4);
+  px(x + 8, y + 28, 2, 28, '#444');
+}
+
+/* ----------------- DRAW STAGE ----------------- */
+function drawStage(lvl, p, camX) {
+  if (lvl.bg === 'hospital') drawHospitalBg(camX, lvl.groundY);
+  else if (lvl.bg === 'party') drawPartyBg(camX, lvl.groundY);
+  else drawSkyBg(lvl.groundY);
+
+  // platforms
+  for (const plat of lvl.platforms) {
+    const x = plat.x - camX;
+    px(x, plat.y, plat.w, 12, '#5DC065');
+    px(x, plat.y + 12, plat.w, 8, '#7E4A22');
+    px(x, plat.y + 20, plat.w, 4, '#5C3214');
+  }
+
+  // pills
+  for (const it of lvl.pills) {
+    if (it.taken) continue;
+    drawPill(it.x - camX, it.y + Math.sin((Date.now()/200) + it.x) * 3, 4);
+  }
+  // hearts
+  for (const it of lvl.hearts) {
+    if (it.taken) continue;
+    drawHeart(it.x - camX, it.y + Math.sin((Date.now()/200) + it.x) * 3, 4);
+  }
+  // cakes
+  if (lvl.cakes) for (const it of lvl.cakes) {
+    if (it.taken) continue;
+    drawCake(it.x - camX, it.y + Math.sin((Date.now()/200) + it.x) * 3, 4);
+  }
+  // gifts
+  if (lvl.gifts) for (const it of lvl.gifts) {
+    if (it.taken) continue;
+    drawGift(it.x - camX, it.y + Math.sin((Date.now()/200) + it.x) * 3, 4);
+  }
+
+  // viruses
+  for (const v of lvl.viruses) {
+    if (!v.alive) continue;
+    drawVirus(v.x - camX, v.y, 4);
+  }
+
+  // patients (hospital ward)
+  if (lvl.patients) {
+    for (const pat of lvl.patients) {
+      drawPatient(pat.x - camX, pat.y, pat.healed);
+    }
+  }
+
+  // goal
+  if (lvl.goal) {
+    const gx = lvl.goal.x - camX;
+    px(gx, lvl.goal.y - 60, 4, 60, '#8B5A2B');
+    px(gx, lvl.goal.y - 60, 80, 28, '#FF4D6D');
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 16px monospace';
+    ctx.fillText(lvl.isFinal ? 'GOAL!' : 'GOAL', gx + 8, lvl.goal.y - 40);
+  }
+
+  // player
+  if (p) {
+    if (p.invuln === 0 || (p.invuln % 6 < 3)) {
+      drawKungKing(p.x - camX, p.y, p.state, p.dir, 4);
+    }
+    // kick effect burst
+    if (p.kickEffect) {
+      drawKickEffect(p.kickEffect.worldX - camX, p.kickEffect.y, p.kickEffect.frame);
+    }
+  }
+}
+
+/* ----------------- STAGE UPDATERS ----------------- */
+function updateStage1or4(lvl, p) {
+  updatePlatformer(p, lvl, 1);
+
+  const pb = {x: p.x + 4, y: p.y + 8, w: p.w - 8, h: p.h - 8};
+
+  // pills
+  for (const it of lvl.pills) {
+    if (!it.taken && collide(pb, {x: it.x, y: it.y, w: 28, h: 20})) {
+      it.taken = true;
+      GAME.score += 10;
+    }
+  }
+  // hearts
+  for (const it of lvl.hearts) {
+    if (!it.taken && collide(pb, {x: it.x, y: it.y, w: 28, h: 24})) {
+      it.taken = true;
+      GAME.lives = Math.min(5, GAME.lives + 1);
+      GAME.score += 25;
+    }
+  }
+  // cakes & gifts (stage 4)
+  if (lvl.cakes) for (const it of lvl.cakes) {
+    if (!it.taken && collide(pb, {x: it.x, y: it.y, w: 36, h: 36})) {
+      it.taken = true; GAME.score += 20;
+    }
+  }
+  if (lvl.gifts) for (const it of lvl.gifts) {
+    if (!it.taken && collide(pb, {x: it.x, y: it.y, w: 36, h: 28})) {
+      it.taken = true; GAME.score += 30;
+    }
+  }
+
+  // viruses
+  for (const v of lvl.viruses) {
+    if (!v.alive) continue;
+    v.x += v.dir * 1.0;
+    if (v.x > v.baseX + v.range) v.dir = -1;
+    if (v.x < v.baseX - v.range) v.dir = 1;
+    if (collide(pb, {x: v.x, y: v.y, w: 28, h: 28}) && p.invuln === 0) {
+      // stomp?
+      if (p.vy > 0.5 && p.y + p.h < v.y + 16) {
+        v.alive = false;
+        p.vy = -7;
+        GAME.score += 15;
+      } else {
+        GAME.lives--;
+        p.invuln = 60;
+        p.vy = -6;
+        p.x -= p.dir * 16;
+      }
+    }
+  }
+
+  // kick attack hitbox (active frames: kickTimer 22..10)
+  if (p.kickTimer > 10) {
+    const kickReach = 52;
+    const kickX = p.dir === 1 ? p.x + p.w : p.x - kickReach;
+    const kickBox = {x: kickX, y: p.y + 28, w: kickReach, h: 32};
+    for (const v of lvl.viruses) {
+      if (!v.alive) continue;
+      if (collide(kickBox, {x: v.x, y: v.y, w: 28, h: 28})) {
+        v.alive = false;
+        GAME.score += 20;
+        p.kickEffect = {
+          x: v.x + 14 - (GAME.camX || 0),
+          worldX: v.x + 14,
+          y: v.y + 8,
+          frame: 0
+        };
+      }
+    }
+  }
+
+  // tick kick effect
+  if (p.kickEffect) {
+    p.kickEffect.frame++;
+    if (p.kickEffect.frame > 20) p.kickEffect = null;
+  }
+
+  // patient healing - check if linked virus is dead
+  if (lvl.patients) {
+    for (const pat of lvl.patients) {
+      if (!pat.healed && !lvl.viruses[pat.virusIdx].alive) {
+        pat.healed = true;
+        GAME.score += 30;
+      }
+    }
+  }
+
+  // goal check
+  if (lvl.goal) {
+    const targetMet = lvl.winCondition === 'viruses'
+      ? lvl.viruses.every(v => !v.alive)
+      : (lvl.cakes
+          ? lvl.cakes.filter(x=>x.taken).length >= (lvl.target||6)
+          : lvl.pills.filter(x=>x.taken).length >= (lvl.target||8));
+    if (collide(pb, {x: lvl.goal.x, y: lvl.goal.y - 60, w: 60, h: 60})) {
+      if (targetMet) {
+        winStage();
+      } else {
+        hint.textContent = lvl.winCondition === 'viruses'
+          ? `กำจัดเชื้อโรคให้หมดก่อนนะ! เหลือ ${lvl.viruses.filter(v=>v.alive).length} ตัว`
+          : `เก็บให้ครบ ${lvl.target} ชิ้นก่อนนะ!`;
+      }
+    }
+  }
+
+  // out of lives
+  if (GAME.lives <= 0) loseStage();
+
+  // fall off
+  if (p.y > H + 80) {
+    GAME.lives--;
+    if (GAME.lives <= 0) loseStage();
+    else respawnPlayer(lvl);
+  }
+}
+
+function respawnPlayer(lvl) {
+  GAME.player = newPlayer(40, lvl.groundY - 64);
+  GAME.player.invuln = 60;
+}
+
+/* ----------------- STAGE 2 (catch) ----------------- */
+function updateStage2(lvl) {
+  // Runner behavior replaced by updateStageRun
+  // kept for compatibility
+  updateStageRun(lvl);
+}
+
+// Runner: กุ๊งกิ๊งวิ่งไล่เตะแมว 10 ตัว
+function updateStageRun(lvl) {
+  if (!GAME.player) GAME.player = newPlayer(40, 240);
+  const p = GAME.player;
+  const SPD = 5;
+
+  // 4-directional movement (no gravity)
+  let moveX = 0, moveY = 0;
+  if (held('arrowleft','a')) moveX = -1;
+  if (held('arrowright','d')) moveX = 1;
+  if (held('arrowup','w')) moveY = -1;
+  if (held('arrowdown','s')) moveY = 1;
+
+  // normalize diagonal
+  if (moveX !== 0 && moveY !== 0) { moveX *= 0.707; moveY *= 0.707; }
+  p.vx = moveX * SPD;
+  p.vy = moveY * SPD;
+  if (moveX !== 0) p.dir = moveX;
+
+  // kick
+  if (held('z','x') && p.kickTimer === 0) p.kickTimer = 22;
+  if (p.kickTimer > 0) p.kickTimer--;
+
+  // move player, clamp to world
+  p.x += p.vx;
+  p.y += p.vy;
+  if (p.x < 0) p.x = 0;
+  if (p.x + p.w > lvl.width) p.x = lvl.width - p.w;
+  if (p.y < 0) p.y = 0;
+  if (p.y + p.h > (lvl.height || 540)) p.y = (lvl.height || 540) - p.h;
+
+  // state
+  p.onGround = true; // top-down, always grounded
+  p.state = p.kickTimer > 0 ? 'kick' : (Math.abs(p.vx) + Math.abs(p.vy) > 0.1) ? 'walk' : 'idle';
+  if (p.invuln > 0) p.invuln--;
+
+  // camera (horizontal scroll only)
+  GAME.camX = Math.max(0, Math.min(lvl.width - W, p.x - W/2 + 32));
+  GAME.camY = 0;
+
+  // cats AI: วิ่งหนีกุ๊งกิ๊ง 4 ทิศ
+  for (const c of lvl.cats) {
+    // --- KO animation countdown ---
+    if (c.koTimer > 0) {
+      c.koTimer--;
+      if (c.koTimer === 0) c.alive = false;
+      if (c.kickEffect) { c.kickEffect.frame++; if (c.kickEffect.frame > 20) c.kickEffect = null; }
+      continue;
+    }
+    if (!c.alive) continue;
+
+    // walk frame counter
+    c.frame = (c.frame || 0) + 1;
+
+    const dx = c.x - p.x;
+    const dy = c.y - p.y;
+    const dist = Math.sqrt(dx*dx + dy*dy) || 1;
+
+    if (dist < 500) {
+      // เร่งหนี
+      c.vx += (dx / dist) * 0.1;
+      c.vy += (dy / dist) * 0.1;
+    }
+    // max speed
+    const spd = Math.sqrt(c.vx*c.vx + c.vy*c.vy);
+    const maxSpd = 4;
+    if (spd > maxSpd) { c.vx = c.vx/spd*maxSpd; c.vy = c.vy/spd*maxSpd; }
+
+    c.x += c.vx;
+    c.y += c.vy;
+
+    // clamp cats to world
+    if (c.x < 10) { c.x = 10; c.vx = Math.abs(c.vx); }
+    if (c.x > lvl.width - 10) { c.x = lvl.width - 10; c.vx = -Math.abs(c.vx); }
+    if (c.y < 10) { c.y = 10; c.vy = Math.abs(c.vy); }
+    if (c.y > (lvl.height||540) - 50) { c.y = (lvl.height||540) - 50; c.vy = -Math.abs(c.vy); }
+
+    // tick kick effect
+    if (c.kickEffect) { c.kickEffect.frame++; if (c.kickEffect.frame > 20) c.kickEffect = null; }
+
+    // kick hitbox (4 directions)
+    if (p.kickTimer > 10) {
+      const kx = p.dir === 1 ? p.x + p.w : p.x - 52;
+      if (collide({x: kx, y: p.y + 20, w: 52, h: 36}, {x: c.x, y: c.y, w: 48, h: 48})) {
+        c.koTimer = 50; GAME.score += 30;
+        c.kickEffect = {x: c.x + 24, y: c.y, frame: 0};
+      }
+    }
+  }
+
+  // win: แมวหมดทุกตัว (ไม่นับที่กำลังเล่น KO animation)
+  if (lvl.cats.every(c => !c.alive && c.koTimer === 0)) winStage();
+}
+
+function drawStage2(lvl) {
+  const H2 = lvl.height || 540;
+  // grass background
+  ctx.fillStyle = '#5aaa44';
+  ctx.fillRect(0, 0, W, H2);
+
+  const cx = GAME.camX || 0;
+
+  // grid lines (ทุ่ง)
+  ctx.strokeStyle = 'rgba(80,160,60,0.4)';
+  ctx.lineWidth = 2;
+  const gridSize = 120;
+  for (let gx = (-(cx % gridSize)); gx < W; gx += gridSize) {
+    ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, H2); ctx.stroke();
+  }
+  for (let gy = 0; gy < H2; gy += gridSize) {
+    ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(W, gy); ctx.stroke();
+  }
+
+  // trees/bushes scattered
+  const treePositions = [[200,80],[500,350],[800,140],[1100,400],[1400,60],[1700,300],
+    [2000,180],[2300,420],[2600,80],[2900,320],[3200,150],[3500,390]];
+  for (const [tx, ty] of treePositions) {
+    const sx = tx - cx;
+    if (sx > -60 && sx < W + 60) {
+      // draw simple top-down bush/tree circle
+      ctx.fillStyle = '#2d7a1f';
+      ctx.beginPath(); ctx.arc(sx, ty, 34, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#3da830';
+      ctx.beginPath(); ctx.arc(sx - 8, ty - 8, 20, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#55cc44';
+      ctx.beginPath(); ctx.arc(sx + 6, ty + 4, 14, 0, Math.PI*2); ctx.fill();
+    }
+  }
+
+  const p = GAME.player;
+
+  // draw cats
+  for (const c of lvl.cats) {
+    const screenX = c.x - cx;
+    const screenY = c.y;
+    // shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.18)';
+    ctx.beginPath(); ctx.ellipse(screenX+28, screenY+48, 22, 8, 0, 0, Math.PI*2); ctx.fill();
+
+    if (c.koTimer > 0) {
+      // KO animation — spin using canvas rotation
+      const spin = (1 - c.koTimer / 50) * Math.PI * 4; // 2 full rotations
+      ctx.save();
+      ctx.translate(screenX + 28, screenY + 28);
+      ctx.rotate(spin);
+      ctx.translate(-28, -28);
+      drawCatKO(0, 0, 4);
+      ctx.restore();
+      // dizzy spiral stars
+      for (let i = 0; i < 3; i++) {
+        const a = spin + (i / 3) * Math.PI * 2;
+        const sr = 28 + Math.sin(spin * 2) * 8;
+        const sx2 = screenX + 28 + Math.cos(a) * sr;
+        const sy2 = screenY - 8 + Math.sin(a) * sr * 0.5;
+        ctx.fillStyle = ['#FFD700','#FF4D6D','#fff'][i];
+        ctx.font = 'bold 18px sans-serif';
+        ctx.fillText('★', sx2 - 8, sy2);
+      }
+    } else if (c.alive) {
+      // walk animation — toggle every 8 frames
+      if (Math.floor(c.frame / 8) % 2 === 0) {
+        drawCatWalkA(screenX, screenY, 4);
+      } else {
+        drawCatWalkB(screenX, screenY, 4);
+      }
+    }
+
+    if (c.kickEffect) drawKickEffect(c.kickEffect.x - cx, c.kickEffect.y, c.kickEffect.frame);
+  }
+
+  // draw player
+  if (p && (p.invuln === 0 || p.invuln % 6 < 3)) {
+    ctx.fillStyle = 'rgba(0,0,0,0.18)';
+    ctx.beginPath(); ctx.ellipse(p.x-cx+16, p.y+60, 18, 7, 0, 0, Math.PI*2); ctx.fill();
+    drawKungKing(p.x - cx, p.y, p.state, p.dir, 4);
+  }
+
+  // HUD: remaining cats
+  const remaining = lvl.cats.filter(c => c.alive).length;
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.fillRect(10, 10, 230, 40);
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 20px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText(`🐱 แมวเหลือ: ${remaining}/10 ตัว`, 20, 36);
+  ctx.textAlign = 'left';
+}
+
+/* ----------------- STAGE 3 (memory) ----------------- */
+let mouse = {x: 0, y: 0, down: false, click: false};
+canvas.addEventListener('click', e => {
+  const rect = canvas.getBoundingClientRect();
+  mouse.x = (e.clientX - rect.left) * (W / rect.width);
+  mouse.y = (e.clientY - rect.top) * (H / rect.height);
+  mouse.click = true;
+});
+
+function memoryLayout(lvl) {
+  const cols = 4, rows = 3;
+  const cw = 160, ch = 140;
+  const totalW = cols * cw + (cols - 1) * 20;
+  const totalH = rows * ch + (rows - 1) * 20;
+  const sx = (W - totalW) / 2;
+  const sy = (H - totalH) / 2 + 20;
+  const out = [];
+  for (let i = 0; i < lvl.cards.length; i++) {
+    const c = i % cols, r = Math.floor(i / cols);
+    out.push({
+      x: sx + c * (cw + 20),
+      y: sy + r * (ch + 20),
+      w: cw, h: ch,
+      card: lvl.cards[i],
+    });
+  }
+  return out;
+}
+
+function updateStage3(lvl) {
+  if (lvl.cooldown > 0) lvl.cooldown--;
+  const cards = memoryLayout(lvl);
+
+  if (mouse.click && lvl.cooldown === 0) {
+    mouse.click = false;
+    for (const c of cards) {
+      if (mouse.x >= c.x && mouse.x <= c.x + c.w && mouse.y >= c.y && mouse.y <= c.y + c.h) {
+        if (c.card.flipped || c.card.matched) break;
+        if (lvl.selected.length >= 2) break;
+        c.card.flipped = true;
+        lvl.selected.push(c.card);
+        if (lvl.selected.length === 2) {
+          lvl.moves++;
+          const [a, b] = lvl.selected;
+          if (a.icon === b.icon) {
+            a.matched = true; b.matched = true;
+            lvl.matchedCount++;
+            lvl.selected = [];
+            GAME.score += 20;
+            if (lvl.matchedCount === 6) winStage();
+          } else {
+            lvl.cooldown = 50;
+          }
+        }
+        break;
+      }
+    }
+  } else {
+    mouse.click = false;
+  }
+
+  if (lvl.cooldown === 1 && lvl.selected.length === 2) {
+    lvl.selected[0].flipped = false;
+    lvl.selected[1].flipped = false;
+    lvl.selected = [];
+  }
+}
+
+function drawStage3(lvl) {
+  drawSkyBackground(460);
+  for (let i = 0; i < 6; i++) drawTree(i * 160, 460);
+  drawGround(460);
+
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 28px monospace';
+  ctx.fillText(`จับคู่: ${lvl.matchedCount}/6  ครั้งที่เปิด: ${lvl.moves}`, 24, 44);
+
+  const cards = memoryLayout(lvl);
+  for (const c of cards) {
+    px(c.x + 6, c.y + 6, c.w, c.h, 'rgba(0,0,0,0.4)');
+    if (c.card.matched) {
+      px(c.x, c.y, c.w, c.h, '#7BD478');
+      drawIcon(c.card.icon, c.x + c.w/2, c.y + c.h/2);
+    } else if (c.card.flipped) {
+      px(c.x, c.y, c.w, c.h, '#fff');
+      px(c.x + 4, c.y + 4, c.w - 8, c.h - 8, '#FFF6E0');
+      drawIcon(c.card.icon, c.x + c.w/2, c.y + c.h/2);
+    } else {
+      px(c.x, c.y, c.w, c.h, '#FF4D6D');
+      px(c.x + 8, c.y + 8, c.w - 16, c.h - 16, '#D8326B');
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 60px monospace';
+      ctx.fillText('?', c.x + c.w/2 - 18, c.y + c.h/2 + 22);
+    }
+  }
+}
+
+function drawIcon(icon, cx, cy) {
+  const x = cx - 20, y = cy - 24;
+  if (icon === 'heart') drawHeart(x, y, 6);
+  else if (icon === 'pill') drawPill(x, y, 6);
+  else if (icon === 'cake') drawCake(x - 8, y - 4, 6);
+  else if (icon === 'gift') drawGift(x - 8, y - 4, 6);
+  else if (icon === 'star') drawStar(x, y);
+  else if (icon === 'flower') drawFlower(x, y);
+}
+
+function drawStar(x, y) {
+  drawSprite([
+    '....#....',
+    '....#....',
+    '...###...',
+    '#########',
+    '.#######.',
+    '..#####..',
+    '..##.##..',
+    '.##...##.',
+    '##.....##',
+  ], {'#': '#FFD700'}, x, y, 4);
+}
+
+function drawFlower(x, y) {
+  drawSprite([
+    '..pp.pp..',
+    '.pppppppp',
+    'pppyypppp',
+    'pppyypppp',
+    '.pppppppp',
+    '..pp.pp..',
+    '....g....',
+    '....g....',
+    '...ggg...',
+  ], {'p': '#FF8FB1', 'y': '#FFD700', 'g': '#3FA64D'}, x, y, 4);
+}
+
+/* ----------------- GAME LOOP ----------------- */
+let camX = 0;
+function loop() {
+  if (GAME.state === 'playing') {
+    const lvl = GAME.level;
+    if (lvl.type === 'platform') {
+      updateStage1or4(lvl, GAME.player);
+      // camera follows player
+      camX = Math.max(0, Math.min(lvl.width - W, GAME.player.x - W/2 + 32));
+      GAME.camX = camX;
+      drawStage(lvl, GAME.player, camX);
+    } else if (lvl.type === 'catch' || lvl.type === 'run') {
+      updateStageRun(lvl);
+      drawStage2(lvl);
+    } else if (lvl.type === 'memory') {
+      updateStage3(lvl);
+      drawStage3(lvl);
+    }
+    // hud
+    let hudHtml = `Stage ${GAME.stage}/4  ❤×${GAME.lives}  คะแนน: ${GAME.score}`;
+    if (lvl.type === 'run') {
+      const aliveCats = lvl.cats ? lvl.cats.filter(c=>c.alive).length : 0;
+      hudHtml += `  🐱 แมว: ${aliveCats} ตัว`;
+    } else if (lvl.target && lvl.type === 'platform') {
+      if (lvl.winCondition === 'viruses') {
+        const remaining = lvl.viruses.filter(v => v.alive).length;
+        hudHtml += `  🦠 เหลือ: ${remaining} ตัว`;
+      } else {
+        const got = lvl.cakes ? lvl.cakes.filter(x=>x.taken).length : lvl.pills.filter(x=>x.taken).length;
+        hudHtml += `  เก็บ: ${got}/${lvl.target}`;
+      }
+    }
+    hud.innerHTML = hudHtml;
+    // hint bottom
+    if (GAME.stage === 2 && lvl.type === 'run') {
+      const alive = lvl.cats ? lvl.cats.filter(c=>c.alive).length : 0;
+      hint.textContent = `ไล่เตะแมวด้วย Z/X หรือกระโดดทับ! เหลือ ${alive}/10 ตัว`;
+    }
+    if (GAME.stage === 1 && lvl.type === 'platform') {
+      const allDead = lvl.viruses && lvl.viruses.every(v => !v.alive);
+      const healedCount = lvl.patients ? lvl.patients.filter(p => p.healed).length : 0;
+      hint.textContent = allDead
+        ? `🎉 เชื้อโรคหมดแล้ว! คนไข้หาย ${healedCount}/${lvl.patients.length} คน – วิ่งไป GOAL!`
+        : `กด Z หรือ X เพื่อ เตะ เชื้อโรค! | กระโดดแล้วเหยียบก็ได้`;
+    }
+  } else {
+    hud.innerHTML = '';
+  }
+  requestAnimationFrame(loop);
+}
+loop();
+
+/* ----------------- FLOW CONTROL ----------------- */
+function startGame() {
+  hide('titleScreen');
+  GAME.totalScore = 0;
+  GAME.lives = 3;
+  loadStage(1);
+}
+function showLevels() {
+  hide('titleScreen');
+  show('levelScreen');
+}
+
+function loadStage(n) {
+  hide('titleScreen'); hide('levelScreen'); hide('messageScreen');
+  GAME.stage = n;
+  GAME.score = 0;
+  let lvl;
+  if (n === 1) lvl = buildStage1();
+  else if (n === 2) lvl = buildStage2();
+  else if (n === 3) lvl = buildStage3();
+  else if (n === 4) lvl = buildStage4();
+  GAME.level = lvl;
+  if (lvl.type === 'platform') GAME.player = newPlayer(40, lvl.groundY - 64);
+  else if (lvl.type === 'run') GAME.player = newPlayer(40, 240);
+  else GAME.player = null;
+  hint.textContent = '';
+
+  // show intro
+  showMessage(`<h2>${lvl.name}</h2><p>${lvl.intro.replace(/\n/g,'<br>')}</p>`, () => {
+    GAME.state = 'playing';
+  });
+}
+
+function winStage() {
+  if (GAME.state !== 'playing') return;
+  GAME.state = 'win';
+  GAME.totalScore += GAME.score;
+  const lvl = GAME.level;
+  if (lvl.isFinal) {
+    showEnding();
+    return;
+  }
+  showMessage(
+    `<h2>ผ่านด่าน ${GAME.stage}! 🎉</h2>
+     <p>${lvl.secretMsg || ''}</p>
+     <p>คะแนนด่านนี้: ${GAME.score}<br>คะแนนรวม: ${GAME.totalScore}</p>`,
+    () => loadStage(GAME.stage + 1)
+  );
+}
+
+function loseStage() {
+  if (GAME.state !== 'playing') return;
+  GAME.state = 'lose';
+  showMessage(
+    `<h2>ลองอีกครั้ง</h2>
+     <p>กุ๊งกิ๊งยังไม่ยอมแพ้!</p>`,
+    () => { GAME.lives = 3; loadStage(GAME.stage); }
+  );
+}
+
+function showEnding() {
+  const panel = document.getElementById('messagePanel');
+  panel.innerHTML = `
+    <h1>🎂 สุขสันต์วันเกิด กุ๊งกิ๊ง 🎂</h1>
+    <h2>ครบรอบ 28 ปี</h2>
+    <p>ขอให้ปีที่ 28 เต็มไปด้วยความสุข<br>สุขภาพแข็งแรง ร่ำรวย<br>และได้ทำในสิ่งที่รักทุกๆวัน</p>
+    <p>ขอบคุณที่เป็นพยาบาลใจดี<br>ที่ดูแลคนไข้ด้วยหัวใจ ❤</p>
+    <p style="margin-top:14px; font-size:13px;">คะแนนรวมทั้งเกม: ${GAME.totalScore}</p>
+  `;
+  const btn = document.createElement('button');
+  btn.textContent = 'เริ่มใหม่';
+  btn.onclick = () => { hide('messageScreen'); GAME.totalScore = 0; GAME.lives = 3; show('titleScreen'); };
+  panel.appendChild(btn);
+  show('messageScreen');
+
+  // confetti animation overlay
+  startConfetti();
+}
+
+/* ----------------- CONFETTI ----------------- */
+let confetti = [];
+function startConfetti() {
+  confetti = [];
+  for (let i = 0; i < 60; i++) {
+    confetti.push({
+      x: Math.random() * W,
+      y: -Math.random() * H,
+      vy: 1 + Math.random() * 2,
+      vx: (Math.random() - 0.5) * 1.5,
+      c: ['#FF4D6D','#FFD700','#3FA6FF','#7B2D8E','#5DC065','#fff'][Math.floor(Math.random()*6)],
+    });
+  }
+}
+function drawConfettiFrame() {
+  for (const c of confetti) {
+    c.x += c.vx; c.y += c.vy;
+    if (c.y > H) c.y = -10;
+    px(c.x, c.y, 3, 3, c.c);
+  }
+}
+
+// extend draw loop to add confetti at ending screen
+const origLoop = loop;
+
+/* ----------------- INITIAL SCREEN BACKDROP ----------------- */
+function drawTitleBackdrop() {
+  drawSkyBackground(440);
+  for (let i = 0; i < 6; i++) drawTree(i * 160, 440);
+  for (let i = 0; i < 8; i++) drawBush(40 + i * 120, 440);
+  drawGround(440);
+  drawKungKing(W/2 - 32, 440 - 80, 'idle', 1, 4);
+  const t = Date.now() / 200;
+  for (let i = 0; i < 5; i++) {
+    drawCoin(120 + i * 160, 200 + Math.sin(t + i) * 16, Math.floor(Date.now()/50));
+  }
+}
+
+// continuously redraw title backdrop when on title screen
+setInterval(() => {
+  if (GAME.state === 'title') {
+    drawTitleBackdrop();
+  }
+  if (GAME.state === 'win' && GAME.level && GAME.level.isFinal === false) {
+    // pause frame
+  }
+  if (document.getElementById('messageScreen').contains(document.getElementById('messagePanel')) &&
+      !document.getElementById('messageScreen').classList.contains('hidden')) {
+    // draw confetti behind if final
+    if (GAME.level && GAME.level.isFinal) {
+      drawConfettiFrame();
+    }
+  }
+}, 33);
+
+</script>
+</body>
+</html>
