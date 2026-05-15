@@ -404,41 +404,78 @@ const KK_JUMP = [
   '....bb....bb....',
 ];
 
-// Kick pose: body leans back, kick leg extends forward clearly
+// Kick pose: body leaned forward, HIGH kick — leg sweeps up diagonally
+// Grid is 18 cols × 24 rows for more room to show the full kick arc
 const KK_KICK = [
-  '................',  // 0
-  '....hhhhhhhh....',  // 1 hair top
-  '..hhhhhhhhhhhh..',  // 2
-  '.pppppppppppppp.',  // 3 headband
-  '.PppppppppppppP.',  // 4
-  '.hhhhhhhhhhhhhh.',  // 5 bangs
-  '.hssssssssssssh.',  // 6 face
-  '.hssHHssssHHssh.',  // 7 brows (fierce!)
-  '.hssHissssHissh.',  // 8 squint eyes (H=brow over i=tiny highlight)
-  '.hssHessssHessh.',  // 9 iris under heavy brow
-  '.hssssssssssssh.',  // 10
-  '.hsBsssOOOsssBh.',  // 11 blush + open mouth
-  '..hssssOssssssh.',  // 12
-  '..hssssssssssh..',  // 13 chin
-  'wwwwww......www.',  // 14 LEFT arm forward (0-5), RIGHT arm pulled back (12-14)
-  '.wwwwwwwwwwwwww.',  // 15 shirt
-  '.wwwwwwwwwwwwww.',  // 16 shirt
-  '..ddddddddd.....',  // 17 pants waist (body leaning back = shifted left)
-  '..ddd.dddddddd..',  // 18 back leg left (2-4) | kick THIGH right (6-13)
-  '..ddd..dddssssss',  // 19 back leg     | kick SHIN: pants(7-9)+skin(10-15)
-  '..bbb..dddsssssb',  // 20 back SHOE    | kick: knee pants(7-9)+skin(10-14)+shoe tip(15)
-  '.......ddd..bbbb',  // 21              | kick shin(7-9) + kick SHOE(12-15) ← BIG SHOE!
+  '..................',  // 0  air
+  '.....hhhhhhhh...',   // 1  hair top
+  '...hhhhhhhhhhhh.',   // 2  hair widens
+  '..pppppppppppppp',   // 3  headband
+  '..PppppppppppppP',   // 4  headband shadow
+  '..hhhhhhhhhhhhhh',   // 5  bangs
+  '..hssssssssssssh',   // 6  face
+  '..hssHHssssHHssh',   // 7  eyebrows fierce (angled)
+  '..hssHHssssHHssh',   // 8  squint — same brow line
+  '..hssHessssHessh',   // 9  pupils under brow
+  '..hssssssssssssh',   // 10 lower face
+  '..hsBsssOOOsssBh',   // 11 blush + open mouth (yelling)
+  '...hssssOssssssh',   // 12 chin (body tilting forward)
+  '....hssssssssssh',   // 13 neck lean
+  'wwwwwwwwwwwwwwww..',  // 14 shirt — arms wide: left back, right forward
+  '.wwwwwwwwwwwwwwww.',  // 15 shirt bulk
+  '..WWwwwwwwwwwwWW..',  // 16 shirt shadow sides (body twist)
+  '....dddddddddd....',  // 17 hip / denim waist (centered, body crouched)
+  '....ddddddd.......',  // 18 standing leg thigh (left, barely visible)
+  '....ddd...........',  // 19 standing leg knee
+  '....bbb...........',  // 20 standing shoe on ground
+  // kick leg sweeps UP and forward — thigh diagonal, shin horizontal
+  '..............dddd',  // 21 kick thigh rising (far right)
+  '.............dddss',  // 22 kick knee + shin skin
+  '............bbbbbb',  // 23 BIG kick shoe extended fully right!
 ];
 
 function drawKungKing(x, y, state, dir, scale = 2) {
   let grid = KK_IDLE;
   if (state === 'walk') {
-    // alternate walk frames every ~10 frames
     grid = (Math.floor((Date.now() / 120)) % 2 === 0) ? KK_WALK1 : KK_WALK2;
   }
   if (state === 'jump') grid = KK_JUMP;
   if (state === 'kick') grid = KK_KICK;
   const pal = Object.assign({}, KK_PALETTE, {'0': '#1a1a1a', 'O': '#D85370'});
+
+  // --- kick VFX: motion lines + glow BEFORE drawing sprite ---
+  if (state === 'kick') {
+    const cx = x + 9 * scale;
+    const cy = y + 12 * scale;
+    const kickX = dir === 1 ? x + 18 * scale : x;
+    const kickY = y + 23 * scale;
+
+    // glow around shoe
+    ctx.save();
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = '#FFD700';
+    ctx.beginPath();
+    ctx.arc(kickX, kickY, scale * 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // motion lines (3 streaks from body toward kick direction)
+    ctx.save();
+    ctx.strokeStyle = '#FF8C00';
+    ctx.lineWidth = scale * 0.8;
+    ctx.globalAlpha = 0.6;
+    for (let i = 0; i < 4; i++) {
+      const ly = kickY - scale * (4 - i) * 2;
+      const lx0 = dir === 1 ? cx + scale * i * 2 : cx - scale * i * 2;
+      const lx1 = dir === 1 ? kickX - scale * 3 : kickX + scale * 3;
+      ctx.beginPath();
+      ctx.moveTo(lx0, ly + scale * i);
+      ctx.lineTo(lx1, kickY - scale * (3 - i));
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   if (dir === -1) {
     for (let row = 0; row < grid.length; row++) {
       const line = grid[row];
@@ -454,7 +491,7 @@ function drawKungKing(x, y, state, dir, scale = 2) {
     drawSprite(grid, pal, x, y, scale);
   }
 
-  // Add tiny sparkle next to head when idle (cute effect)
+  // sparkle on idle
   if (state === 'idle') {
     const t = Math.floor(Date.now() / 300) % 2;
     if (t === 0) {
