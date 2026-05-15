@@ -600,6 +600,58 @@ function drawCat(x, y, s = 4) {
   drawCatWalkA(x, y, s);
 }
 
+// มอมแมม — white cat with black patches, sitting pose (ขาว-ดำ)
+function drawMomMaem(x, y, s = 4, hurt = false) {
+  const W2 = hurt ? '#FF8888' : '#FFFFFF'; // flash red when hurt
+  drawSprite([
+    '..eee...eee...',  // ears
+    '..eWWWWWe.....',  // ear fill
+    '.WWWWWWWWWWW..',  // head
+    '.WooWBBBBWooW.',  // eyes + black patch on forehead
+    '.WWWWnnWWWWWW.',  // nose
+    'wWWBBBBBBBBWww',  // black stripe body
+    'wwWWBBBBBBWwww',  // black
+    '.WWWWWWWWWWWW.',  // belly white
+    '.WWWWWWWWWW...',  // body lower
+    '.WWWWWWWWWW..TT', // tail
+    '.WWWWWWWW..TTTT', // tail curve (black tail)
+    '.bbW..WbbWW....',  // paws (one black one white)
+  ], {
+    'e': '#888888',   // grey ear
+    'W': W2,          // white fur (red if hurt)
+    'B': '#222222',   // black patches
+    'o': '#44BB44',   // green eyes (แมวขาว-ดำมักตาเขียว)
+    'n': '#FF99BB',   // pink nose
+    'w': '#DDDDDD',   // whisker light grey
+    'T': '#333333',   // black tail
+    'b': '#555555',   // dark paw
+  }, x, y, s);
+  // ชื่อ มอมแมม ลอยเหนือหัว
+  ctx.fillStyle = '#fff';
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = 3;
+  ctx.font = `bold ${s * 4}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.strokeText('มอมแมม', x + (14 * s / 2), y - 4);
+  ctx.fillText('มอมแมม', x + (14 * s / 2), y - 4);
+  ctx.textAlign = 'left';
+}
+
+// มอมแมม KO (ถ้า HP หมด แสดง sprite สลบ)
+function drawMomMaemKO(x, y, s = 4) {
+  drawSprite([
+    '.WWWWWWWWWWBBB',
+    'WWWWWWWBBBBBWW',
+    'wWWxBBBxBBWWww',
+    '.WWWWWuWWWWWWW',
+    '..WWWWWWWWWWW.',
+    '..bbWW..bbBBB.',
+  ], {
+    'W':'#FFFFFF','B':'#222222','x':'#333333',
+    'u':'#FF6699','w':'#DDDDDD','b':'#555555',
+  }, x, y, s);
+}
+
 // Seed particle (collectible to throw)
 function drawSeed(x, y, s = 3) {
   drawSprite([
@@ -782,25 +834,34 @@ function buildHospitalStage() {
 function buildCatChaseStage() {
   const cats = [];
   for (let i = 0; i < 10; i++) {
+    // วางรอบขอบ — ห่างจากศูนย์กลาง
+    const angle = (i / 10) * Math.PI * 2;
+    const r = 600 + Math.random() * 400;
     cats.push({
-      x: 300 + i * 340,
-      y: 80 + Math.random() * 340,
+      x: 1900 + Math.cos(angle) * r,
+      y: 270 + Math.sin(angle) * r * 0.5,
       vx: 0, vy: 0,
       alive: true,
-      frame: 0,          // walk animation counter
+      frame: 0,
       kickEffect: null,
-      koTimer: 0,        // countdown after being knocked out (plays KO anim before disappearing)
+      koTimer: 0,
     });
   }
   return {
-    name: 'ด่าน 1: ไล่เตะแมว',
-    intro: 'มีแมว 10 ตัววิ่งหนีกุ๊งกิ๊ง!\nใช้ ← → ↑ ↓ วิ่งทุกทิศทาง\nกด Z หรือ X เพื่อเตะให้ครบทุกตัว',
+    name: 'ด่าน 1: ปกป้องมอมแมม!',
+    intro: 'แมวอันธพาลกำลังรุมทำร้ายมอมแมม! 😱\nวิ่งด้วย ← → ↑ ↓ กด Z หรือ X เพื่อเตะ\nรีบเตะแมวอันธพาลให้หมดก่อนมอมแมมตาย!',
     type: 'run',
     width: 3800,
     height: 540,
     cats: cats,
+    mommaem: {
+      x: 1900, y: 240,       // กึ่งกลางโลก
+      hp: 100,
+      maxHp: 100,
+      hurtTimer: 0,
+    },
     bg: 'topdown',
-    secretMsg: 'กุ๊งกิ๊งวิ่งเร็วที่สุด ไม่มีอะไรหนีได้! 🐾',
+    secretMsg: 'กุ๊งกิ๊งปกป้องมอมแมมได้สำเร็จ! 🐾❤️',
   };
 }
 
@@ -1242,49 +1303,45 @@ function updateStage2(lvl) {
   updateStageRun(lvl);
 }
 
-// Runner: กุ๊งกิ๊งวิ่งไล่เตะแมว 10 ตัว
+// Runner: กุ๊งกิ๊งวิ่งปกป้องมอมแมม
 function updateStageRun(lvl) {
   if (!GAME.player) GAME.player = newPlayer(40, 240);
   const p = GAME.player;
   const SPD = 5;
+  const mm = lvl.mommaem;
 
-  // 4-directional movement (no gravity)
+  // 4-directional movement
   let moveX = 0, moveY = 0;
   if (held('arrowleft','a')) moveX = -1;
   if (held('arrowright','d')) moveX = 1;
   if (held('arrowup','w')) moveY = -1;
   if (held('arrowdown','s')) moveY = 1;
-
-  // normalize diagonal
   if (moveX !== 0 && moveY !== 0) { moveX *= 0.707; moveY *= 0.707; }
   p.vx = moveX * SPD;
   p.vy = moveY * SPD;
   if (moveX !== 0) p.dir = moveX;
 
-  // kick
   if (held('z','x') && p.kickTimer === 0) p.kickTimer = 22;
   if (p.kickTimer > 0) p.kickTimer--;
 
-  // move player, clamp to world
-  p.x += p.vx;
-  p.y += p.vy;
+  p.x += p.vx; p.y += p.vy;
   if (p.x < 0) p.x = 0;
   if (p.x + p.w > lvl.width) p.x = lvl.width - p.w;
   if (p.y < 0) p.y = 0;
   if (p.y + p.h > (lvl.height || 540)) p.y = (lvl.height || 540) - p.h;
 
-  // state
-  p.onGround = true; // top-down, always grounded
+  p.onGround = true;
   p.state = p.kickTimer > 0 ? 'kick' : (Math.abs(p.vx) + Math.abs(p.vy) > 0.1) ? 'walk' : 'idle';
   if (p.invuln > 0) p.invuln--;
 
-  // camera (horizontal scroll only)
   GAME.camX = Math.max(0, Math.min(lvl.width - W, p.x - W/2 + 32));
-  GAME.camY = 0;
 
-  // cats AI: วิ่งหนีกุ๊งกิ๊ง 4 ทิศ
+  // มอมแมม hurtTimer
+  if (mm.hurtTimer > 0) mm.hurtTimer--;
+
+  // cats AI: ไล่มอมแมม!
   for (const c of lvl.cats) {
-    // --- KO animation countdown ---
+    // KO countdown
     if (c.koTimer > 0) {
       c.koTimer--;
       if (c.koTimer === 0) c.alive = false;
@@ -1293,58 +1350,76 @@ function updateStageRun(lvl) {
     }
     if (!c.alive) continue;
 
-    // walk frame counter
     c.frame = (c.frame || 0) + 1;
 
-    const dx = c.x - p.x;
-    const dy = c.y - p.y;
+    // วิ่งเข้าหามอมแมม
+    const dx = mm.x - c.x;
+    const dy = mm.y - c.y;
     const dist = Math.sqrt(dx*dx + dy*dy) || 1;
+    c.vx += (dx / dist) * 0.15;
+    c.vy += (dy / dist) * 0.15;
 
-    if (dist < 500) {
-      // เร่งหนี
-      c.vx += (dx / dist) * 0.1;
-      c.vy += (dy / dist) * 0.1;
+    // หนีผู้เล่นเล็กน้อย (กลัวกุ๊งกิ๊งบ้าง)
+    const pdx = c.x - p.x;
+    const pdy = c.y - p.y;
+    const pdist = Math.sqrt(pdx*pdx + pdy*pdy) || 1;
+    if (pdist < 180) {
+      c.vx += (pdx / pdist) * 0.25;
+      c.vy += (pdy / pdist) * 0.25;
     }
-    // max speed
+
     const spd = Math.sqrt(c.vx*c.vx + c.vy*c.vy);
-    const maxSpd = 4;
+    const maxSpd = 3.5;
     if (spd > maxSpd) { c.vx = c.vx/spd*maxSpd; c.vy = c.vy/spd*maxSpd; }
 
-    c.x += c.vx;
-    c.y += c.vy;
-
-    // clamp cats to world
+    c.x += c.vx; c.y += c.vy;
     if (c.x < 10) { c.x = 10; c.vx = Math.abs(c.vx); }
     if (c.x > lvl.width - 10) { c.x = lvl.width - 10; c.vx = -Math.abs(c.vx); }
     if (c.y < 10) { c.y = 10; c.vy = Math.abs(c.vy); }
     if (c.y > (lvl.height||540) - 50) { c.y = (lvl.height||540) - 50; c.vy = -Math.abs(c.vy); }
 
-    // tick kick effect
     if (c.kickEffect) { c.kickEffect.frame++; if (c.kickEffect.frame > 20) c.kickEffect = null; }
 
-    // kick hitbox (4 directions)
+    // แมวถึงมอมแมม → ทำร้าย!
+    if (dist < 52 && mm.hurtTimer === 0) {
+      mm.hp -= 8;
+      mm.hurtTimer = 40; // cooldown ระหว่างโดนทำร้าย
+      // กระแทกแมวกลับ
+      c.vx = -(dx/dist) * 3;
+      c.vy = -(dy/dist) * 3;
+      if (mm.hp <= 0) {
+        mm.hp = 0;
+        loseStage();
+        return;
+      }
+    }
+
+    // kick hitbox ของกุ๊งกิ๊ง
     if (p.kickTimer > 10) {
       const kx = p.dir === 1 ? p.x + p.w : p.x - 52;
       if (collide({x: kx, y: p.y + 20, w: 52, h: 36}, {x: c.x, y: c.y, w: 48, h: 48})) {
         c.koTimer = 50; GAME.score += 30;
         c.kickEffect = {x: c.x + 24, y: c.y, frame: 0};
+        // เตะกระเด็น
+        const ex = c.x - p.x, ey = c.y - p.y;
+        const el = Math.sqrt(ex*ex+ey*ey)||1;
+        c.vx = (ex/el)*8; c.vy = (ey/el)*8;
       }
     }
   }
 
-  // win: แมวหมดทุกตัว (ไม่นับที่กำลังเล่น KO animation)
+  // win: แมวอันธพาลหมด
   if (lvl.cats.every(c => !c.alive && c.koTimer === 0)) winStage();
 }
 
 function drawStage2(lvl) {
   const H2 = lvl.height || 540;
-  // grass background
   ctx.fillStyle = '#5aaa44';
   ctx.fillRect(0, 0, W, H2);
 
   const cx = GAME.camX || 0;
 
-  // grid lines (ทุ่ง)
+  // grid (ทุ่ง)
   ctx.strokeStyle = 'rgba(80,160,60,0.4)';
   ctx.lineWidth = 2;
   const gridSize = 120;
@@ -1355,13 +1430,12 @@ function drawStage2(lvl) {
     ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(W, gy); ctx.stroke();
   }
 
-  // trees/bushes scattered
+  // trees
   const treePositions = [[200,80],[500,350],[800,140],[1100,400],[1400,60],[1700,300],
     [2000,180],[2300,420],[2600,80],[2900,320],[3200,150],[3500,390]];
   for (const [tx, ty] of treePositions) {
     const sx = tx - cx;
     if (sx > -60 && sx < W + 60) {
-      // draw simple top-down bush/tree circle
       ctx.fillStyle = '#2d7a1f';
       ctx.beginPath(); ctx.arc(sx, ty, 34, 0, Math.PI*2); ctx.fill();
       ctx.fillStyle = '#3da830';
@@ -1372,25 +1446,51 @@ function drawStage2(lvl) {
   }
 
   const p = GAME.player;
+  const mm = lvl.mommaem;
 
-  // draw cats
+  // --- วาดมอมแมม ---
+  const mmSX = mm.x - cx;
+  const mmSY = mm.y;
+  // วงกลมป้องกัน (aura)
+  const pulse = 0.7 + Math.sin(Date.now()/300) * 0.3;
+  ctx.save();
+  ctx.globalAlpha = 0.15 * pulse;
+  ctx.fillStyle = '#FFFFFF';
+  ctx.beginPath(); ctx.arc(mmSX + 28, mmSY + 24, 60, 0, Math.PI*2); ctx.fill();
+  ctx.restore();
+  // shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.2)';
+  ctx.beginPath(); ctx.ellipse(mmSX+28, mmSY+50, 24, 9, 0, 0, Math.PI*2); ctx.fill();
+  if (mm.hp > 0) {
+    drawMomMaem(mmSX, mmSY, 4, mm.hurtTimer > 0);
+    // กรอบ HP มอมแมม (เหนือตัว)
+    const barW = 80, barH = 10;
+    const bx = mmSX + (28 - barW/2), by = mmSY - 28;
+    ctx.fillStyle = '#333';
+    ctx.fillRect(bx - 2, by - 2, barW + 4, barH + 4);
+    ctx.fillStyle = '#E63946';
+    ctx.fillRect(bx, by, barW, barH);
+    ctx.fillStyle = mm.hp > 50 ? '#44DD44' : mm.hp > 25 ? '#FFD700' : '#FF4D00';
+    ctx.fillRect(bx, by, barW * (mm.hp / mm.maxHp), barH);
+  } else {
+    drawMomMaemKO(mmSX, mmSY, 4);
+  }
+
+  // --- วาดแมวอันธพาล ---
   for (const c of lvl.cats) {
     const screenX = c.x - cx;
     const screenY = c.y;
-    // shadow
     ctx.fillStyle = 'rgba(0,0,0,0.18)';
     ctx.beginPath(); ctx.ellipse(screenX+28, screenY+48, 22, 8, 0, 0, Math.PI*2); ctx.fill();
 
     if (c.koTimer > 0) {
-      // KO animation — spin using canvas rotation
-      const spin = (1 - c.koTimer / 50) * Math.PI * 4; // 2 full rotations
+      const spin = (1 - c.koTimer / 50) * Math.PI * 4;
       ctx.save();
       ctx.translate(screenX + 28, screenY + 28);
       ctx.rotate(spin);
       ctx.translate(-28, -28);
       drawCatKO(0, 0, 4);
       ctx.restore();
-      // dizzy spiral stars
       for (let i = 0; i < 3; i++) {
         const a = spin + (i / 3) * Math.PI * 2;
         const sr = 28 + Math.sin(spin * 2) * 8;
@@ -1401,33 +1501,57 @@ function drawStage2(lvl) {
         ctx.fillText('★', sx2 - 8, sy2);
       }
     } else if (c.alive) {
-      // walk animation — toggle every 8 frames
-      if (Math.floor(c.frame / 8) % 2 === 0) {
-        drawCatWalkA(screenX, screenY, 4);
-      } else {
-        drawCatWalkB(screenX, screenY, 4);
-      }
+      if (Math.floor(c.frame / 8) % 2 === 0) drawCatWalkA(screenX, screenY, 4);
+      else drawCatWalkB(screenX, screenY, 4);
     }
-
     if (c.kickEffect) drawKickEffect(c.kickEffect.x - cx, c.kickEffect.y, c.kickEffect.frame);
   }
 
-  // draw player
+  // วาด player
   if (p && (p.invuln === 0 || p.invuln % 6 < 3)) {
     ctx.fillStyle = 'rgba(0,0,0,0.18)';
     ctx.beginPath(); ctx.ellipse(p.x-cx+16, p.y+60, 18, 7, 0, 0, Math.PI*2); ctx.fill();
     drawKungKing(p.x - cx, p.y, p.state, p.dir, 4);
   }
 
-  // HUD: remaining cats
-  const remaining = lvl.cats.filter(c => c.alive).length;
-  ctx.fillStyle = 'rgba(0,0,0,0.5)';
-  ctx.fillRect(10, 10, 230, 40);
+  // HUD มอมแมม HP bar ใหญ่ มุมบนซ้าย
+  const hpPct = mm.hp / mm.maxHp;
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillRect(10, 10, 280, 50);
   ctx.fillStyle = '#fff';
-  ctx.font = 'bold 20px sans-serif';
+  ctx.font = 'bold 15px sans-serif';
   ctx.textAlign = 'left';
-  ctx.fillText(`🐱 แมวเหลือ: ${remaining}/10 ตัว`, 20, 36);
+  ctx.fillText('🐱 มอมแมม HP', 18, 28);
+  ctx.fillStyle = '#333';
+  ctx.fillRect(18, 34, 240, 18);
+  ctx.fillStyle = hpPct > 0.5 ? '#44DD44' : hpPct > 0.25 ? '#FFD700' : '#FF4400';
+  ctx.fillRect(18, 34, 240 * hpPct, 18);
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(18, 34, 240, 18);
+  // แมวเหลือ
+  const remaining = lvl.cats.filter(c => c.alive || c.koTimer > 0).length;
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillRect(W - 230, 10, 220, 40);
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 18px sans-serif';
+  ctx.textAlign = 'right';
+  ctx.fillText(`� แมวร้าย: ${remaining}/10`, W - 18, 36);
   ctx.textAlign = 'left';
+
+  // เตือน HP ต่ำ
+  if (mm.hurtTimer > 20) {
+    ctx.save();
+    ctx.globalAlpha = mm.hurtTimer / 40 * 0.4;
+    ctx.fillStyle = '#FF0000';
+    ctx.fillRect(0, 0, W, H2);
+    ctx.restore();
+    ctx.fillStyle = '#FF4400';
+    ctx.font = 'bold 36px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('มอมแมมโดนทำร้าย! 😿', W/2, H2/2 - 20);
+    ctx.textAlign = 'left';
+  }
 }
 
 /* ----------------- STAGE 3 (memory) ----------------- */
@@ -1603,8 +1727,9 @@ function loop() {
     hud.innerHTML = hudHtml;
     // hint bottom
     if (GAME.stage === 1 && lvl.type === 'run') {
+      const mm = lvl.mommaem;
       const alive = lvl.cats ? lvl.cats.filter(c=>c.alive).length : 0;
-      hint.textContent = `ไล่เตะแมวด้วย Z/X หรือกระโดดทับ! เหลือ ${alive}/10 ตัว`;
+      hint.textContent = `เตะแมวอันธพาลด้วย Z/X ก่อนมอมแมม HP หมด! HP: ${mm ? mm.hp : 0}/${mm ? mm.maxHp : 100} | แมวร้ายเหลือ ${alive} ตัว`;
     }
     if (GAME.stage === 2 && lvl.type === 'platform') {
       const allDead = lvl.viruses && lvl.viruses.every(v => !v.alive);
