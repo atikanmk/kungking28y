@@ -20,16 +20,6 @@
     background: #87CEEB;
     transform-origin: center center;
   }
-  @media (max-width: 980px) {
-    #gameWrap {
-      transform: scale(calc(100vw / 960));
-    }
-  }
-  @media (max-height: 560px) and (orientation: landscape) {
-    #gameWrap {
-      transform: scale(calc(100vh / 540));
-    }
-  }
   canvas {
     display: block;
     width: 100%; height: 100%;
@@ -88,7 +78,7 @@
   .panel button:hover { background: #fff; }
   .levelBtns { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 10px; }
 
-  /* ====== TOUCH CONTROLS ====== */
+  /* ====== TOUCH CONTROLS — JOYSTICK ====== */
   #touchControls {
     display: none;
     position: absolute;
@@ -99,6 +89,31 @@
   @media (pointer: coarse) {
     #touchControls { display: block; }
   }
+  /* Joystick base */
+  #joy-base {
+    position: absolute;
+    bottom: 24px; left: 24px;
+    width: 130px; height: 130px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.15);
+    border: 3px solid rgba(255,255,255,0.4);
+    pointer-events: auto;
+    touch-action: none;
+    user-select: none; -webkit-user-select: none;
+  }
+  /* Joystick stick (knob) */
+  #joy-knob {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 54px; height: 54px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.55);
+    border: 3px solid rgba(255,255,255,0.9);
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    transition: background 0.1s;
+  }
+  /* Action buttons */
   .touch-btn {
     position: absolute;
     pointer-events: auto;
@@ -107,24 +122,13 @@
     border-radius: 50%;
     color: #fff;
     font-size: 26px;
-    line-height: 1;
     display: flex; align-items: center; justify-content: center;
-    user-select: none;
-    -webkit-user-select: none;
+    user-select: none; -webkit-user-select: none;
     touch-action: none;
-    transition: background 0.1s;
   }
-  .touch-btn:active, .touch-btn.pressed {
-    background: rgba(255,255,255,0.45);
-  }
-  /* D-pad left side */
-  #tb-left  { width:64px;height:64px; bottom:100px; left:40px; }
-  #tb-right { width:64px;height:64px; bottom:100px; left:170px; }
-  #tb-up    { width:64px;height:64px; bottom:175px; left:105px; }
-  #tb-down  { width:64px;height:64px; bottom:25px;  left:105px; }
-  /* Action buttons right side */
-  #tb-kick  { width:72px;height:72px; bottom:80px;  right:50px; background:rgba(255,200,0,0.25); border-color:rgba(255,200,0,0.7); font-size:30px; }
-  #tb-jump  { width:64px;height:64px; bottom:160px; right:130px; background:rgba(100,200,255,0.22); border-color:rgba(100,200,255,0.7); }
+  .touch-btn.pressed { background: rgba(255,255,255,0.45); }
+  #tb-kick { width:72px;height:72px; bottom:36px; right:36px;  background:rgba(255,200,0,0.28); border-color:rgba(255,200,0,0.8); font-size:32px; }
+  #tb-jump { width:62px;height:62px; bottom:120px; right:116px; background:rgba(100,200,255,0.22); border-color:rgba(100,200,255,0.8); }
 </style>
 </head>
 <body>
@@ -133,12 +137,9 @@
   <div id="hud"></div>
   <div id="hint"></div>
 
-  <!-- Touch controls for iPad -->
+  <!-- Touch controls for iPad — Joystick -->
   <div id="touchControls">
-    <div class="touch-btn" id="tb-left">◀</div>
-    <div class="touch-btn" id="tb-right">▶</div>
-    <div class="touch-btn" id="tb-up">▲</div>
-    <div class="touch-btn" id="tb-down">▼</div>
+    <div id="joy-base"><div id="joy-knob"></div></div>
     <div class="touch-btn" id="tb-kick">👊</div>
     <div class="touch-btn" id="tb-jump">↑</div>
   </div>
@@ -196,20 +197,96 @@ window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
 
 function held(...ks) { return ks.some(k => keys[k.toLowerCase()]); }
 
-/* ---- Touch button mapping ---- */
-const touchMap = {
-  'tb-left':  'arrowleft',
-  'tb-right': 'arrowright',
-  'tb-up':    'arrowup',
-  'tb-down':  'arrowdown',
-  'tb-kick':  'z',
-  'tb-jump':  'arrowup',
-};
-Object.entries(touchMap).forEach(([id, key]) => {
+/* ---- Responsive scaling: 80vw wide, 16:9 ratio ---- */
+function resizeGame() {
+  const wrap = document.getElementById('gameWrap');
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const targetW = vw * 0.80;
+  const targetH = targetW * (9 / 16);
+  // if height doesn't fit, constrain by height instead
+  const scale = Math.min(targetW / 960, targetH / 540, vh / 540);
+  wrap.style.transform = `scale(${scale})`;
+}
+resizeGame();
+window.addEventListener('resize', resizeGame);
+
+/* ---- Joystick ---- */
+(function() {
+  const base  = document.getElementById('joy-base');
+  const knob  = document.getElementById('joy-knob');
+  if (!base) return;
+
+  const RADIUS = 38; // max knob travel (px)
+  const DEAD   = 0.25; // dead zone fraction
+  let active = false;
+  let baseX = 0, baseY = 0;
+
+  function getCenter() {
+    const r = base.getBoundingClientRect();
+    return { cx: r.left + r.width/2, cy: r.top + r.height/2 };
+  }
+
+  function onStart(e) {
+    e.preventDefault();
+    active = true;
+    const t = e.touches ? e.touches[0] : e;
+    const {cx, cy} = getCenter();
+    baseX = cx; baseY = cy;
+    update(t.clientX, t.clientY);
+  }
+  function onMove(e) {
+    e.preventDefault();
+    if (!active) return;
+    const t = e.touches ? e.touches[0] : e;
+    update(t.clientX, t.clientY);
+  }
+  function onEnd(e) {
+    e.preventDefault();
+    active = false;
+    knob.style.transform = 'translate(-50%, -50%)';
+    keys['arrowleft'] = false; keys['arrowright'] = false;
+    keys['arrowup']   = false; keys['arrowdown']  = false;
+  }
+
+  // Get scale so we compensate for CSS transform
+  function getScale() {
+    const wrap = document.getElementById('gameWrap');
+    const m = new DOMMatrix(getComputedStyle(wrap).transform);
+    return m.a || 1;
+  }
+
+  function update(cx2, cy2) {
+    const scale = getScale();
+    const dx = (cx2 - baseX) / scale;
+    const dy = (cy2 - baseY) / scale;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    const clamped = Math.min(dist, RADIUS);
+    const nx = dist > 0 ? dx/dist : 0;
+    const ny = dist > 0 ? dy/dist : 0;
+    knob.style.transform = `translate(calc(-50% + ${nx*clamped}px), calc(-50% + ${ny*clamped}px))`;
+
+    const ratio = Math.min(dist / RADIUS, 1);
+    keys['arrowleft']  = nx < -DEAD && ratio > DEAD;
+    keys['arrowright'] = nx >  DEAD && ratio > DEAD;
+    keys['arrowup']    = ny < -DEAD && ratio > DEAD;
+    keys['arrowdown']  = ny >  DEAD && ratio > DEAD;
+  }
+
+  base.addEventListener('touchstart',  onStart, { passive: false });
+  base.addEventListener('touchmove',   onMove,  { passive: false });
+  base.addEventListener('touchend',    onEnd,   { passive: false });
+  base.addEventListener('touchcancel', onEnd,   { passive: false });
+})();
+
+/* ---- Action buttons ---- */
+['tb-kick','tb-jump'].forEach(id => {
+  const keyMap = { 'tb-kick': 'z', 'tb-jump': 'arrowup' };
   const el = document.getElementById(id);
   if (!el) return;
-  const press   = e => { e.preventDefault(); keys[key] = true;  el.classList.add('pressed'); };
-  const release = e => { e.preventDefault(); keys[key] = false; el.classList.remove('pressed'); };
+  const k = keyMap[id];
+  const press   = e => { e.preventDefault(); keys[k] = true;  el.classList.add('pressed'); };
+  const release = e => { e.preventDefault(); keys[k] = false; el.classList.remove('pressed'); };
   el.addEventListener('touchstart',  press,   { passive: false });
   el.addEventListener('touchend',    release, { passive: false });
   el.addEventListener('touchcancel', release, { passive: false });
