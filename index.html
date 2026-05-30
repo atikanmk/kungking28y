@@ -161,6 +161,7 @@
       <div class="levelBtns">
         <button onclick="loadStage(1)" aria-label="ด่าน 1 ไล่เตะแมว">1. ไล่เตะแมว</button>
         <button onclick="loadStage(2)" aria-label="ด่าน 2 โรงพยาบาล">2. โรงพยาบาล</button>
+        <button onclick="loadStage(3)" aria-label="ด่าน 3 ต่างดาว">3. ต่างดาว 👽</button>
       </div>
       <button onclick="hide('levelScreen'); show('titleScreen')">กลับ</button>
     </div>
@@ -953,7 +954,7 @@ const GAME = {
   totalScore: 0,
   state: 'title',   // title | playing | win | lose | ending
 };
-const FINAL_STAGE_NUMBER = 2;
+const FINAL_STAGE_NUMBER = 3;
 
 /* ----------------- STAGE 1: Hospital Platformer ----------------- */
 function buildHospitalStage() {
@@ -1092,6 +1093,40 @@ function buildStage4() {
     target: 6,
     isFinal: true,
     secretMsg: 'สุขสันต์วันเกิดครบรอบ 28 ปีนะกุ๊งกิ๊ง 🎂',
+  };
+}
+
+/* ---------- STAGE 3: Alien Planet Chase ---------- */
+function buildAlienChaseStage() {
+  const positions = [
+    {x:900,y:200},{x:1250,y:400},{x:1600,y:180},{x:2000,y:430},
+    {x:2400,y:220},{x:2800,y:390},{x:3200,y:160},{x:3600,y:420},
+  ];
+  const aliens = positions.map((pos, i) => ({
+    x: pos.x, y: pos.y,
+    vx: i % 2 === 0 ? 1.3 : -1.3,
+    vy: i % 3 === 0 ? 0.9 : -0.9,
+    alive: true, frame: 0,
+    koTimer: 0, kickEffect: null,
+    scared: false, scaredTimer: 0,
+  }));
+  return {
+    name: 'ฉากที่ 3: ดาวต่างดาว 👽',
+    intro: 'กุ๊งกิ๊งกับมอมแมมลงจอดที่ต่างดาว! 🛸\nภารกิจ: ไล่เตะมนุษต่างดาวออกไปให้หมด!\nวิ่งด้วย ← → ↑ ↓   กด Z หรือ X เพื่อเตะ',
+    type: 'alien',
+    width: 4000, height: 540,
+    aliens,
+    phase: 'landing',
+    phaseTimer: 0,
+    shipWorldX: 80,
+    shipScreenY: -220,
+    shipLandedY: 180,
+    groundY: 440,
+    kkCutX: 130, kkCutY: 376,
+    mmCutX: 130, mmCutY: 384,
+    mommaem: { x: 300, y: 320, frame: 0 },
+    bg: 'alien',
+    secretMsg: 'กุ๊งกิ๊งคือนักสู้ระดับกาแล็กซี่ตัวแท้! 🛸💥🌌',
   };
 }
 
@@ -2135,6 +2170,477 @@ function drawFlower(x, y) {
   ], {'p': '#FF8FB1', 'y': '#FFD700', 'g': '#3FA64D'}, x, y, 4);
 }
 
+/* -------- ALIEN SPRITES (ฉากที่ 3) -------- */
+const ALIEN_PAL = {
+  'G': '#44DD88', 'g': '#22BB66',
+  'E': '#FFFFFF', 'P': '#001100',
+  'a': '#AAFFCC', 'B': '#228855',
+  'l': '#116644', 'f': '#0A4422',
+  'm': '#005533', 'x': '#003311',
+};
+const ALIEN_IDLE = [
+  '..a..a..',
+  '..GGGG..',
+  '.GGGGGG.',
+  '.GEGGEg.',
+  '.GPGGPg.',
+  '.GGmGGG.',
+  '..GGGG..',
+  '...BB...',
+  '..BBBB..',
+  '..l..l..',
+  '..f..f..',
+];
+const ALIEN_WALK = [
+  '..a..a..',
+  '..GGGG..',
+  '.GGGGGG.',
+  '.GEGGEg.',
+  '.GPGGPg.',
+  '.GGmGGG.',
+  '..GGGG..',
+  '...BB...',
+  '..BBBB..',
+  '.l....l.',
+  '.f....f.',
+];
+const ALIEN_KO_GRID = [
+  '.GGGGGG.',
+  '.GxGGxG.',
+  '.GGmGGG.',
+  '..GGGG..',
+  '..BBBB..',
+  '..l..l..',
+  '..f..f..',
+];
+
+function drawAlienSprite(x, y, s, dir) {
+  const frame = Math.floor(Date.now() / 160) % 2;
+  const grid = frame === 0 ? ALIEN_IDLE : ALIEN_WALK;
+  if (dir === -1) {
+    for (let row = 0; row < grid.length; row++) {
+      const line = grid[row];
+      for (let col = 0; col < line.length; col++) {
+        const ch = line[line.length - 1 - col];
+        if (ch === '.' || ch === ' ') continue;
+        const color = ALIEN_PAL[ch];
+        if (!color) continue;
+        px(x + col * s, y + row * s, s, s, color);
+      }
+    }
+  } else {
+    drawSprite(grid, ALIEN_PAL, x, y, s);
+  }
+}
+
+function drawAlienKOSprite(x, y, s) {
+  drawSprite(ALIEN_KO_GRID, ALIEN_PAL, x, y, s);
+}
+
+function drawSpaceship(sx, sy) {
+  const cx = sx + 110;
+  // Engine glow
+  ctx.save();
+  ctx.globalAlpha = 0.22 + Math.sin(Date.now() / 100) * 0.1;
+  ctx.fillStyle = '#00FFCC';
+  ctx.beginPath(); ctx.ellipse(cx, sy + 34, 68, 18, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+  // Landing legs
+  px(sx + 22, sy + 20, 8, 26, '#AAAACC');
+  px(sx + 4,  sy + 44, 34, 8, '#9999BB');
+  px(sx + 190, sy + 20, 8, 26, '#AAAACC');
+  px(sx + 182, sy + 44, 34, 8, '#9999BB');
+  // Main saucer disk
+  ctx.fillStyle = '#AABBDD';
+  ctx.beginPath(); ctx.ellipse(cx, sy + 18, 108, 28, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#8899BB';
+  ctx.beginPath(); ctx.ellipse(cx, sy + 28, 80, 12, 0, 0, Math.PI * 2); ctx.fill();
+  // Upper dome
+  ctx.fillStyle = '#CCDDE8';
+  ctx.beginPath(); ctx.ellipse(cx, sy + 16, 66, 32, 0, Math.PI, 0); ctx.fill();
+  ctx.fillStyle = '#DDEEFF';
+  ctx.beginPath(); ctx.ellipse(cx, sy + 6, 42, 22, 0, Math.PI, 0); ctx.fill();
+  // Cockpit glass
+  ctx.save(); ctx.globalAlpha = 0.65;
+  ctx.fillStyle = '#66CCFF';
+  ctx.beginPath(); ctx.ellipse(cx, sy + 2, 26, 14, 0, Math.PI, 0); ctx.fill();
+  ctx.restore();
+  // Blinking rim lights
+  const b = Math.floor(Date.now() / 180) % 3;
+  const lc = ['#FF4466', '#FFD700', '#44EEFF'];
+  for (let i = 0; i < 7; i++) {
+    ctx.fillStyle = lc[(i + b) % 3];
+    ctx.beginPath(); ctx.arc(sx + 22 + i * 28, sy + 18, 5, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+function drawSpaceshipRamp(sx, sy, groundY, progress) {
+  if (progress <= 0) return;
+  const cx = sx + 110;
+  const rTopX = cx - 10, rTopY = sy + 36;
+  const rBotX = cx - 10 + (cx - 65 - (cx - 10)) * progress;
+  const rBotY = rTopY + (groundY - rTopY) * progress;
+  ctx.fillStyle = '#AABBCC';
+  ctx.beginPath();
+  ctx.moveTo(rTopX - 16, rTopY);
+  ctx.lineTo(rTopX + 16, rTopY);
+  ctx.lineTo(rBotX + 20, rBotY);
+  ctx.lineTo(rBotX - 20, rBotY);
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = '#8899BB'; ctx.lineWidth = 2; ctx.stroke();
+  for (let si = 1; si <= 4; si++) {
+    const t = si / 4;
+    const stepX = rTopX - 16 + (rBotX - 20 - (rTopX - 16)) * t;
+    const stepY = rTopY + (rBotY - rTopY) * t;
+    ctx.fillStyle = '#99AABB';
+    ctx.fillRect(stepX - 2, stepY - 2, 40, 5);
+  }
+}
+
+/* ---------- ALIEN PLANET BACKGROUND ---------- */
+function drawAlienBg(cx) {
+  // Space sky strip
+  ctx.fillStyle = '#060620';
+  ctx.fillRect(0, 0, W, 130);
+  // Stars
+  for (let i = 0; i < 60; i++) {
+    const sx2 = ((i * 151 + 20) % (W + 80)) - 40;
+    const sy2 = (i * 67 + 11) % 120;
+    const blink = (Math.sin(Date.now() / 550 + i * 0.8) + 1) / 2;
+    ctx.globalAlpha = 0.35 + blink * 0.65;
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(sx2, sy2, i % 6 === 0 ? 3 : 2, i % 6 === 0 ? 3 : 2);
+  }
+  ctx.globalAlpha = 1;
+  // Big purple moon
+  const moonX = W - 90 - (cx * 0.04 % 180);
+  ctx.fillStyle = '#DD99FF';
+  ctx.beginPath(); ctx.arc(moonX, 68, 44, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#BB77DD';
+  ctx.beginPath(); ctx.arc(moonX - 18, 58, 11, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#CC88EE';
+  ctx.beginPath(); ctx.arc(moonX + 10, 82, 7, 0, Math.PI * 2); ctx.fill();
+  // Small moon
+  ctx.fillStyle = '#FFDDAA';
+  ctx.beginPath(); ctx.arc(160 - (cx * 0.02 % 120), 48, 22, 0, Math.PI * 2); ctx.fill();
+  // Horizon gradient
+  const grad = ctx.createLinearGradient(0, 100, 0, 140);
+  grad.addColorStop(0, '#3300AA'); grad.addColorStop(1, '#1A0033');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 100, W, 40);
+  // Alien ground
+  ctx.fillStyle = '#1A0033';
+  ctx.fillRect(0, 130, W, H - 130);
+  // Grid
+  ctx.strokeStyle = 'rgba(120,0,200,0.28)';
+  ctx.lineWidth = 1.5;
+  const gs = 120;
+  for (let gx = (-(cx % gs)); gx < W; gx += gs) {
+    ctx.beginPath(); ctx.moveTo(gx, 130); ctx.lineTo(gx, H); ctx.stroke();
+  }
+  for (let gy = 130; gy < H; gy += gs) {
+    ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(W, gy); ctx.stroke();
+  }
+  // Crystal rock formations
+  for (let i = 0; i < 22; i++) {
+    const rx = (i * 187 + 60) - cx;
+    if (rx < -30 || rx > W + 30) continue;
+    const ry = 150 + (i * 83) % 330;
+    const rh = 18 + (i * 31) % 44;
+    const colors = ['#9922EE','#BB44FF','#7700BB','#AA33DD'];
+    ctx.fillStyle = colors[i % 4];
+    ctx.beginPath();
+    ctx.moveTo(rx - 9, ry + rh); ctx.lineTo(rx, ry); ctx.lineTo(rx + 9, ry + rh);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#EEBEFF';
+    ctx.beginPath();
+    ctx.moveTo(rx - 2, ry + rh); ctx.lineTo(rx, ry + 8); ctx.lineTo(rx + 2, ry + rh);
+    ctx.closePath(); ctx.fill();
+    ctx.save();
+    ctx.globalAlpha = 0.12 + Math.sin(Date.now() / 500 + i) * 0.08;
+    ctx.fillStyle = '#CC66FF';
+    ctx.beginPath(); ctx.arc(rx, ry + rh * 0.4, 13, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+}
+
+/* ---------- ALIEN STAGE UPDATE ---------- */
+function updateStageAlien(lvl) {
+  const GROUND_Y = 440;
+  const SPD = 5;
+
+  /* Landing phase */
+  if (lvl.phase === 'landing') {
+    GAME.camX = 0;
+    lvl.phaseTimer++;
+    const t = Math.min(lvl.phaseTimer / 180, 1);
+    const ease = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+    lvl.shipScreenY = -220 + (lvl.shipLandedY + 220) * ease;
+    if (lvl.phaseTimer >= 210) {
+      lvl.phase = 'disembark';
+      lvl.phaseTimer = 0;
+      lvl.shipScreenY = lvl.shipLandedY;
+    }
+    return;
+  }
+
+  /* Disembark phase */
+  if (lvl.phase === 'disembark') {
+    GAME.camX = 0;
+    lvl.phaseTimer++;
+    const rampBotX = lvl.shipWorldX + 50; // world X where ramp meets ground
+    if (lvl.phaseTimer >= 70 && lvl.phaseTimer < 155) {
+      const t = (lvl.phaseTimer - 70) / 85;
+      lvl.kkCutX = rampBotX + t * 220;
+    } else if (lvl.phaseTimer >= 155) {
+      lvl.kkCutX = rampBotX + 220;
+    }
+    if (lvl.phaseTimer >= 130 && lvl.phaseTimer < 215) {
+      const t = (lvl.phaseTimer - 130) / 85;
+      lvl.mmCutX = rampBotX + t * 170;
+    } else if (lvl.phaseTimer >= 215) {
+      lvl.mmCutX = rampBotX + 170;
+    }
+    if (lvl.phaseTimer >= 240) {
+      lvl.phase = 'play';
+      GAME.player = newPlayer(lvl.kkCutX, GROUND_Y - 64);
+      lvl.mommaem.x = lvl.mmCutX;
+      lvl.mommaem.y = GROUND_Y - 56;
+    }
+    return;
+  }
+
+  /* Play phase */
+  if (!GAME.player) GAME.player = newPlayer(400, GROUND_Y - 64);
+  const p = GAME.player;
+
+  let moveX = 0, moveY = 0;
+  if (held('arrowleft','a')) moveX = -1;
+  if (held('arrowright','d')) moveX = 1;
+  if (held('arrowup','w')) moveY = -1;
+  if (held('arrowdown','s')) moveY = 1;
+  if (moveX !== 0 && moveY !== 0) { moveX *= 0.707; moveY *= 0.707; }
+  p.vx = moveX * SPD; p.vy = moveY * SPD;
+  if (moveX !== 0) p.dir = moveX;
+
+  if (held('z','x') && p.kickTimer === 0) p.kickTimer = 22;
+  if (p.kickTimer > 0) p.kickTimer--;
+
+  p.x += p.vx; p.y += p.vy;
+  p.x = Math.max(0, Math.min(lvl.width - p.w, p.x));
+  p.y = Math.max(130, Math.min((lvl.height || 540) - p.h, p.y));
+  p.onGround = true;
+  p.state = p.kickTimer > 0 ? 'kick' : (Math.abs(p.vx) + Math.abs(p.vy) > 0.1) ? 'walk' : 'idle';
+  if (p.invuln > 0) p.invuln--;
+
+  GAME.camX = Math.max(0, Math.min(lvl.width - W, p.x - W / 2 + 32));
+
+  // MomMaem follows player
+  const mm = lvl.mommaem;
+  mm.frame = (mm.frame || 0) + 1;
+  const mmDx = p.x - mm.x, mmDy = p.y - mm.y;
+  const mmDist = Math.sqrt(mmDx * mmDx + mmDy * mmDy) || 1;
+  if (mmDist > 70) { mm.x += (mmDx / mmDist) * 2.8; mm.y += (mmDy / mmDist) * 2.8; }
+  mm.x = Math.max(20, Math.min(lvl.width - 60, mm.x));
+  mm.y = Math.max(140, Math.min((lvl.height || 540) - 60, mm.y));
+
+  // Aliens AI
+  for (const al of lvl.aliens) {
+    if (al.koTimer > 0) {
+      al.koTimer--;
+      if (al.koTimer === 0) al.alive = false;
+      if (al.kickEffect) { al.kickEffect.frame++; if (al.kickEffect.frame > 20) al.kickEffect = null; }
+      continue;
+    }
+    if (!al.alive) continue;
+    al.frame = (al.frame || 0) + 1;
+
+    // Scare on nearby kick
+    if (p.kickTimer > 10) {
+      const kdx = al.x - p.x, kdy = al.y - p.y;
+      if (Math.sqrt(kdx*kdx+kdy*kdy) < 220) { al.scared = true; al.scaredTimer = 100; }
+    }
+    if (al.scaredTimer > 0) al.scaredTimer--;
+    if (al.scaredTimer <= 0) al.scared = false;
+
+    const adx = p.x - al.x, ady = p.y - al.y;
+    const adist = Math.sqrt(adx*adx + ady*ady) || 1;
+
+    let tx, ty;
+    if (al.scared) { tx = -adx; ty = -ady; }        // flee
+    else if (adist < 280) { tx = adx; ty = ady; }    // chase
+    else { tx = al.vx * 20; ty = al.vy * 20; }       // wander
+
+    const tl = Math.sqrt(tx*tx+ty*ty) || 1;
+    al.vx += (tx/tl) * 0.22; al.vy += (ty/tl) * 0.12;
+    const aspd = Math.sqrt(al.vx*al.vx+al.vy*al.vy);
+    const maxSpd = al.scared ? 4.8 : 3.2;
+    if (aspd > maxSpd) { al.vx = al.vx/aspd*maxSpd; al.vy = al.vy/aspd*maxSpd; }
+
+    al.x += al.vx; al.y += al.vy;
+    if (al.x < 20) { al.x = 20; al.vx = Math.abs(al.vx); }
+    if (al.x > lvl.width - 20) { al.x = lvl.width - 20; al.vx = -Math.abs(al.vx); }
+    if (al.y < 150) { al.y = 150; al.vy = Math.abs(al.vy); }
+    if (al.y > (lvl.height||540) - 60) { al.y = (lvl.height||540) - 60; al.vy = -Math.abs(al.vy); }
+
+    if (al.kickEffect) { al.kickEffect.frame++; if (al.kickEffect.frame > 20) al.kickEffect = null; }
+
+    // Contact damage
+    if (adist < 44 && p.invuln === 0) {
+      GAME.lives--;
+      p.invuln = 90;
+      if (GAME.lives <= 0) { loseStage(); return; }
+    }
+
+    // Kick hit
+    if (p.kickTimer > 10) {
+      const kx = p.dir === 1 ? p.x + p.w : p.x - 52;
+      if (collide({x:kx,y:p.y+20,w:52,h:36},{x:al.x,y:al.y,w:32,h:44})) {
+        al.koTimer = 60; GAME.score += 30;
+        al.kickEffect = {x: al.x + 16, y: al.y, frame: 0};
+        const el = Math.sqrt(adx*adx+ady*ady)||1;
+        al.vx = -(adx/el) * 9; al.vy = -(ady/el) * 9;
+      }
+    }
+  }
+
+  if (p.kickEffect) { p.kickEffect.frame++; if (p.kickEffect.frame > 20) p.kickEffect = null; }
+
+  if (lvl.aliens.every(al => !al.alive && al.koTimer === 0)) winStage();
+}
+
+/* ---------- ALIEN STAGE DRAW ---------- */
+function drawStageAlien(lvl) {
+  const cx = GAME.camX || 0;
+  const GROUND_Y = 440;
+  const p = GAME.player;
+
+  drawAlienBg(cx);
+
+  // Spaceship (always near world start)
+  const shipSX = lvl.shipWorldX - cx;
+  const shipSY = (lvl.phase === 'landing') ? lvl.shipScreenY : lvl.shipLandedY;
+
+  if (shipSX > -260 && shipSX < W + 100) {
+    // Thruster flames during landing
+    if (lvl.phase === 'landing') {
+      const flicker = 0.5 + Math.random() * 0.5;
+      ctx.save(); ctx.globalAlpha = 0.7 * flicker;
+      ctx.fillStyle = '#FF8800';
+      ctx.beginPath(); ctx.ellipse(shipSX + 110, shipSY + 54, 28, 44 * flicker, 0, 0, Math.PI*2); ctx.fill();
+      ctx.globalAlpha = 0.5 * flicker;
+      ctx.fillStyle = '#FFDD00';
+      ctx.beginPath(); ctx.ellipse(shipSX + 110, shipSY + 52, 12, 26 * flicker, 0, 0, Math.PI*2); ctx.fill();
+      ctx.restore();
+      // Dust ring on ground as ship approaches
+      if (lvl.shipScreenY > 100) {
+        const dustAlpha = Math.max(0, (lvl.shipScreenY - 100) / 120) * 0.4;
+        ctx.save(); ctx.globalAlpha = dustAlpha;
+        ctx.fillStyle = '#8844FF';
+        ctx.beginPath(); ctx.ellipse(shipSX + 110, GROUND_Y, 90, 20, 0, 0, Math.PI*2); ctx.fill();
+        ctx.restore();
+      }
+    }
+    drawSpaceship(shipSX, shipSY);
+    const rampProg = lvl.phase === 'landing' ? 0
+      : lvl.phase === 'disembark' ? Math.min(lvl.phaseTimer / 65, 1)
+      : 1;
+    drawSpaceshipRamp(shipSX, shipSY, GROUND_Y, rampProg);
+  }
+
+  /* Cutscene characters */
+  if (lvl.phase === 'disembark') {
+    const kkSX = lvl.kkCutX - cx;
+    const mmSX = lvl.mmCutX - cx;
+    if (lvl.phaseTimer >= 70) {
+      drawKungKing(kkSX, GROUND_Y - 80, 'walk', 1, 4);
+    }
+    if (lvl.phaseTimer >= 135) {
+      drawMomMaem(mmSX, GROUND_Y - 56, 4);
+    }
+    if (lvl.phaseTimer >= 195) {
+      ctx.fillStyle = '#AAFFCC'; ctx.strokeStyle = '#002200'; ctx.lineWidth = 4;
+      ctx.font = 'bold 30px sans-serif'; ctx.textAlign = 'center';
+      ctx.strokeText('ภารกิจเริ่มต้น! 🛸', W / 2, 100);
+      ctx.fillText('ภารกิจเริ่มต้น! 🛸', W / 2, 100);
+      ctx.textAlign = 'left';
+    }
+  }
+
+  if (lvl.phase === 'landing') {
+    ctx.fillStyle = '#AAFFCC'; ctx.strokeStyle = '#001100'; ctx.lineWidth = 4;
+    ctx.font = 'bold 28px sans-serif'; ctx.textAlign = 'center';
+    ctx.strokeText('ยานกำลังลงจอด… 🛸', W / 2, 82);
+    ctx.fillText('ยานกำลังลงจอด… 🛸', W / 2, 82);
+    ctx.textAlign = 'left';
+    return; // skip game objects during landing
+  }
+
+  /* Play phase: draw world objects */
+  if (lvl.phase === 'play') {
+    // MomMaem
+    const mm = lvl.mommaem;
+    const mmSX = mm.x - cx;
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    ctx.beginPath(); ctx.ellipse(mmSX + 28, mm.y + 50, 22, 8, 0, 0, Math.PI*2); ctx.fill();
+    drawMomMaem(mmSX, mm.y, 4);
+
+    // Aliens
+    for (const al of lvl.aliens) {
+      const ax = al.x - cx, ay = al.y;
+      ctx.fillStyle = 'rgba(0,0,0,0.22)';
+      ctx.beginPath(); ctx.ellipse(ax + 16, ay + 42, 14, 5, 0, 0, Math.PI*2); ctx.fill();
+
+      if (al.koTimer > 0) {
+        const spin = (1 - al.koTimer / 60) * Math.PI * 4;
+        ctx.save();
+        ctx.translate(ax + 16, ay + 22);
+        ctx.rotate(spin);
+        ctx.translate(-16, -22);
+        drawAlienKOSprite(0, 0, 4);
+        ctx.restore();
+        for (let i = 0; i < 3; i++) {
+          const a = spin + (i / 3) * Math.PI * 2;
+          const sr = 22 + Math.sin(spin * 2) * 6;
+          ctx.fillStyle = ['#FFD700','#FF4D6D','#44DDFF'][i];
+          ctx.font = 'bold 16px sans-serif';
+          ctx.fillText('★', ax + 16 + Math.cos(a) * sr - 6, ay + Math.sin(a) * sr * 0.6);
+        }
+      } else if (al.alive) {
+        // Aura when chasing
+        if (!al.scared) {
+          ctx.save();
+          ctx.globalAlpha = 0.14 + Math.sin(Date.now()/300)*0.08;
+          ctx.fillStyle = '#44FF88';
+          ctx.beginPath(); ctx.arc(ax+16, ay+22, 28, 0, Math.PI*2); ctx.fill();
+          ctx.restore();
+        }
+        const dir = al.vx < -0.1 ? -1 : 1;
+        drawAlienSprite(ax, ay, 4, dir);
+      }
+      if (al.kickEffect) drawKickEffect(al.kickEffect.x - cx, al.kickEffect.y, al.kickEffect.frame);
+    }
+
+    // Player
+    if (p && (p.invuln === 0 || p.invuln % 6 < 3)) {
+      ctx.fillStyle = 'rgba(0,0,0,0.18)';
+      ctx.beginPath(); ctx.ellipse(p.x-cx+16, p.y+60, 18, 7, 0, 0, Math.PI*2); ctx.fill();
+      drawKungKing(p.x - cx, p.y, p.state, p.dir, 4);
+    }
+    if (p && p.kickEffect) drawKickEffect(p.kickEffect.worldX - cx, p.kickEffect.y, p.kickEffect.frame);
+
+    // HUD alien count
+    const alive = lvl.aliens.filter(a => a.alive || a.koTimer > 0).length;
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(W - 265, 10, 254, 42);
+    ctx.fillStyle = '#AAFFCC';
+    ctx.font = 'bold 20px sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText(`👽 มนุษต่างดาว: ${alive}/8`, W - 18, 36);
+    ctx.textAlign = 'left';
+  }
+}
+
 /* ----------------- GAME LOOP ----------------- */
 let camX = 0;
 function loop() {
@@ -2151,12 +2657,15 @@ function loop() {
     } else if (lvl.type === 'catch' || lvl.type === 'run') {
       updateStageRun(lvl);
       drawStage2(lvl);
+    } else if (lvl.type === 'alien') {
+      updateStageAlien(lvl);
+      drawStageAlien(lvl);
     } else if (lvl.type === 'memory') {
       updateStage3(lvl);
       drawStage3(lvl);
     }
     // hud
-    let hudHtml = `Stage ${GAME.stage}/2  ❤×${GAME.lives}  คะแนน: ${GAME.score}`;
+    let hudHtml = `Stage ${GAME.stage}/${FINAL_STAGE_NUMBER}  ❤×${GAME.lives}  คะแนน: ${GAME.score}`;
     if (lvl.type === 'run') {
       const aliveCats = lvl.cats ? lvl.cats.filter(c=>c.alive).length : 0;
       hudHtml += `  🐱 แมว: ${aliveCats} ตัว`;
@@ -2179,6 +2688,10 @@ function loop() {
     if (GAME.stage === 2 && lvl.type === 'topdown') {
       const alive = lvl.viruses ? lvl.viruses.filter(v=>v.alive).length : 0;
       hint.textContent = `กด Z หรือ X เตะเชื้อโรค! เชื้อโรคเหลือ ${alive} ตัว`;
+    }
+    if (GAME.stage === 3 && lvl.type === 'alien' && lvl.phase === 'play') {
+      const alive = lvl.aliens ? lvl.aliens.filter(a => a.alive || a.koTimer > 0).length : 0;
+      hint.textContent = `กด Z หรือ X เตะมนุษต่างดาว! 👽 เหลือ ${alive} ตัว`;
     }
   } else {
     hud.innerHTML = '';
@@ -2206,6 +2719,7 @@ function loadStage(n) {
   let lvl;
   if (n === 1) lvl = buildCatChaseStage();
   else if (n === 2) lvl = buildHospitalStage();
+  else if (n === 3) lvl = buildAlienChaseStage();
   else {
     console.warn(`Unknown stage: ${n}`);
     GAME.level = null;
@@ -2217,6 +2731,7 @@ function loadStage(n) {
   GAME.level = lvl;
   if (lvl.type === 'platform') GAME.player = newPlayer(40, lvl.groundY - 64);
   else if (lvl.type === 'run' || lvl.type === 'topdown') GAME.player = newPlayer(40, 240);
+  else if (lvl.type === 'alien') GAME.player = null; // created after cutscene
   else GAME.player = null;
   hint.textContent = '';
 
